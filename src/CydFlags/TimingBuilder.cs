@@ -1,0 +1,332 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
+using GameReaderCommon;
+
+namespace CydFlags
+{
+    /// <summary>
+    /// Turns SimHub's relative-opponent data into the tiny CSV-ish payload the
+    /// CYD firmware understands:
+    ///
+    ///     position~name~gap~gapcolor~lap~lapcolor;...
+    ///
+    /// Row 1 is the car ahead, row 2 the player, row 3 the car behind. Values
+    /// are pre-formatted so the ESP32 does not need any floating point or time
+    /// formatting code. Color codes: '-' none, 'G' green, 'R' red, 'P' purple.
+    /// The player row has an empty gap field (0.00 is meaningless for yourself).
+    /// </summary>
+    internal static class TimingBuilder
+    {
+        private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+        private static readonly object TrendLock = new object();
+        private static readonly System.Collections.Generic.Dictionary<string, double> LastGapByCar =
+            new System.Collections.Generic.Dictionary<string, double>(StringComparer.Ordinal);
+
+        /// <summary>Forget gap history when a race ends or the session changes.</summary>
+        public static void ResetTrend()
+        {
+            lock (TrendLock) LastGapByCar.Clear();
+        }
+
+        public static bool IsRaceSession(StatusDataBase data)
+        {
+            if (data == null) return false;
+            string session = data.SessionTypeName;
+            if (string.IsNullOrEmpty(session)) return false;
+
+            // SimHub reports e.g. "Race", "Practice", "Qualifying", "Warmup",
+            // "Hotlap" and "Time Attack". Only a race session gets the tower.
+            if (session.IndexOf("race", StringComparison.OrdinalIgnoreCase) < 0) return false;
+            if (session.IndexOf("practice", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+            if (session.IndexOf("qualif", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+            if (session.IndexOf("warmup", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+            if (session.IndexOf("hotlap", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+            if (session.IndexOf("time attack", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+            return true;
+        }
+
+        public static string Build(StatusDataBase data, bool bestLapMode)
+        {
+            if (data == null) return string.Empty;
+
+            Opponent ahead = First(data.OpponentsAheadOnTrack);
+            Opponent behind = First(data.OpponentsBehindOnTrack);
+
+            // Some games do not fill the on-track lists; fall back to the
+            // neighbouring overall positions so the tower is still useful.
+            if (ahead == null && data.Position > 1)
+                ahead = AtPosition(data.Opponents, data.Position - 1);
+            if (behind == null && data.Position > 0)
+                behind = AtPosition(data.Opponents, data.Position + 1);
+
+            double playerLap = LapSeconds(data, bestLapMode);
+            double best = BestLap(data, playerLap, bestLapMode);
+
+            string payload = Row(ahead, true, best, playerLap, bestLapMode)
+                + ";" + PlayerRow(data, playerLap, best)
+                + ";" + Row(behind, false, best, playerLap, bestLapMode);
+            if (payload.Length > 250) payload = payload.Substring(0, 250);
+            return payload;
+        }
+
+        private static Opponent First(object list)
+        {
+            IEnumerable items = list as IEnumerable;
+            if (items == null) return null;
+
+            foreach (object item in items)
+            {
+                Opponent opponent = item as Opponent;
+                if (opponent != null) return opponent;
+            }
+            return null;
+        }
+
+        private static Opponent AtPosition(object list, int position)
+        {
+            IEnumerable items = list as IEnumerable;
+            if (items == null) return null;
+
+            foreach (object item in items)
+            {
+                Opponent opponent = item as Opponent;
+                if (opponent == null || opponent.IsPlayer) continue;
+                if (opponent.Position == position) return opponent;
+            }
+            return null;
+        }
+
+        private static string Row(Opponent opponent, bool isAhead, double bestLap,
+            double playerLap, bool bestLapMode)
+        {
+            if (opponent == null)
+                return "0~---~---~-~--:--.---~-";
+
+            object gap = opponent.RelativeGapToPlayer;
+            double gapSeconds;
+            if (!TrySeconds(gap, out gapSeconds) || Math.Abs(gapSeconds) < 0.0005)
+                gap = opponent.GaptoPlayer;
+
+            bool gapValid = TrySeconds(gap, out gapSeconds);
+            if (gapValid) gapSeconds = Math.Abs(gapSeconds);
+
+            double lap = LapSeconds(opponent, bestLapMode);
+            return string.Join("~", new[]
+            {
+                opponent.Position.ToString(Inv),
+                Clean(opponent.Name),
+                FormatGap(gap),
+                gapValid ? GapCode(opponent, gapSeconds, isAhead) : "-",
+                FormatLap(lap),
+                TimeCode(lap, bestLap, playerLap, false)
+            });
+        }
+
+        private static string PlayerRow(StatusDataBase data, double playerLap, double bestLap)
+        {
+            string name = Clean(data.PlayerName);
+            if (name == "---") name = "YOU";
+
+            return string.Join("~", new[]
+            {
+                data.Position > 0 ? data.Position.ToString(Inv) : "?",
+                name,
+                string.Empty, // gap to yourself: no meaningless 0.00
+                "-",
+                FormatLap(playerLap),
+                TimeCode(playerLap, bestLap, 0, true)
+            });
+        }
+
+        private static string GapCode(Opponent opponent, double gapSeconds, bool isAhead)
+        {
+            if (gapSeconds <= 0) return "-";
+
+            string key = (isAhead ? "A|" : "B|") + opponent.Position.ToString(Inv) + "|" + Clean(opponent.Name);
+            double previous;
+            bool known;
+            lock (TrendLock)
+            {
+                if (LastGapByCar.Count > 200) LastGapByCar.Clear();
+                known = LastGapByCar.TryGetValue(key, out previous);
+                LastGapByCar[key] = gapSeconds;
+            }
+
+            if (!known || Math.Abs(gapSeconds - previous) < 0.02) return "-";
+
+            bool closing = gapSeconds < previous;
+            if (isAhead) return closing ? "G" : "R";
+            return closing ? "R" : "G";
+        }
+
+        private static string TimeCode(double value, double best, double player, bool isPlayer)
+        {
+            if (value <= 0) return "-";
+            if (best > 0 && Math.Abs(value - best) <= 0.0005) return "P";
+            if (!isPlayer && player > 0)
+            {
+                if (value < player - 0.0005) return "R";
+                if (value > player + 0.0005) return "G";
+            }
+            return "-";
+        }
+
+        private static double LapSeconds(StatusDataBase data, bool bestLapMode)
+        {
+            return SecondsOf(bestLapMode ? data.BestLapTime : data.LastLapTime);
+        }
+
+        private static double LapSeconds(Opponent opponent, bool bestLapMode)
+        {
+            return SecondsOf(bestLapMode ? opponent.BestLapTime : opponent.LastLapTime);
+        }
+
+        private static double BestLap(StatusDataBase data, double playerLap, bool bestLapMode)
+        {
+            double best = playerLap;
+            foreach (Opponent opponent in Enumerate(data.Opponents))
+            {
+                if (opponent == null || opponent.IsPlayer) continue;
+                double value = LapSeconds(opponent, bestLapMode);
+                if (value > 0 && (best <= 0 || value < best)) best = value;
+            }
+            return best;
+        }
+
+        private static IEnumerable<Opponent> Enumerate(object list)
+        {
+            IEnumerable items = list as IEnumerable;
+            if (items == null) yield break;
+
+            foreach (object item in items)
+            {
+                Opponent opponent = item as Opponent;
+                if (opponent != null) yield return opponent;
+            }
+        }
+
+        private static double SecondsOf(object value)
+        {
+            double seconds;
+            return TrySeconds(value, out seconds) && seconds > 0 ? seconds : 0;
+        }
+
+        private static string Clean(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return "---";
+
+            // The CYD font is ASCII-only. Fold accents (René -> Rene) and
+            // replace anything that still cannot be drawn, so ESPHome does not
+            // log "Codepoint ... not found in font" for every redraw.
+            value = FoldToAscii(value);
+
+            var chars = new char[value.Length];
+            int n = 0;
+            foreach (char c in value.Trim())
+            {
+                if (c == '~' || c == ';') continue;
+                if (!IsFontChar(c)) continue;
+                chars[n++] = c;
+            }
+
+            string result = new string(chars, 0, n).Trim();
+            if (result.Length == 0) return "---";
+            if (result.Length > 11) result = result.Substring(0, 12);
+            return result;
+        }
+
+        private static bool IsFontChar(char c)
+        {
+            if (c >= 'A' && c <= 'Z') return true;
+            if (c >= 'a' && c <= 'z') return true;
+            if (c >= '0' && c <= '9') return true;
+            const string punctuation = " .,:;!?()[]&+/-_'~";
+            return punctuation.IndexOf(c) >= 0;
+        }
+
+        private static string FoldToAscii(string value)
+        {
+            // German umlauts are expanded before Unicode decomposition, so
+            // "Müller" becomes "Mueller" and "MÜLLER" becomes "MUELLER".
+            var expanded = new StringBuilder(value.Length + 8);
+            foreach (char c in value)
+            {
+                switch (c)
+                {
+                    case 'ä': expanded.Append("ae"); break;
+                    case 'ö': expanded.Append("oe"); break;
+                    case 'ü': expanded.Append("ue"); break;
+                    case 'Ä': expanded.Append("AE"); break;
+                    case 'Ö': expanded.Append("OE"); break;
+                    case 'Ü': expanded.Append("UE"); break;
+                    case 'ß': expanded.Append("ss"); break;
+                    case 'ẞ': expanded.Append("SS"); break;
+                    default: expanded.Append(c); break;
+                }
+            }
+
+            string decomposed = expanded.ToString().Normalize(NormalizationForm.FormD);
+            var sb = new StringBuilder(decomposed.Length);
+            foreach (char c in decomposed)
+            {
+                if (CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark)
+                    continue;
+
+                switch (c)
+                {
+                    case 'ß': sb.Append("ss"); break;
+                    case 'ø': case 'Ø': sb.Append(c == 'ø' ? "o" : "O"); break;
+                    case 'ł': case 'Ł': sb.Append(c == 'ł' ? "l" : "L"); break;
+                    case 'đ': case 'Đ': sb.Append(c == 'đ' ? "d" : "D"); break;
+                    case 'æ': sb.Append("ae"); break;
+                    case 'Æ': sb.Append("AE"); break;
+                    case 'œ': sb.Append("oe"); break;
+                    case 'Œ': sb.Append("OE"); break;
+                    default: sb.Append(c); break;
+                }
+            }
+            return sb.ToString().Normalize(NormalizationForm.FormC);
+        }
+
+        private static string FormatGap(object value)
+        {
+            double seconds;
+            if (!TrySeconds(value, out seconds)) return "---";
+            return Math.Abs(seconds).ToString("0.00", Inv);
+        }
+
+        private static string FormatLap(double seconds)
+        {
+            if (seconds <= 0) return "--:--.---";
+
+            int minutes = (int)(seconds / 60.0);
+            double rest = seconds - minutes * 60.0;
+            return minutes.ToString(Inv) + ":" + rest.ToString("00.000", Inv);
+        }
+
+        private static bool TrySeconds(object value, out double seconds)
+        {
+            seconds = 0;
+            if (value == null) return false;
+
+            if (value is TimeSpan)
+            {
+                seconds = ((TimeSpan)value).TotalSeconds;
+                return true;
+            }
+
+            if (value is double || value is float || value is int || value is long || value is decimal)
+            {
+                seconds = Convert.ToDouble(value, Inv);
+                return true;
+            }
+
+            string text = value.ToString();
+            return double.TryParse(text, NumberStyles.Float, Inv, out seconds);
+        }
+    }
+}

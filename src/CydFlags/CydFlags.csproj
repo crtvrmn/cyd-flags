@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{8B3F2D64-5A7E-4C21-9E8D-2F4A6B1C3D90}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>CydFlags</RootNamespace>
+    <AssemblyName>CydFlags</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <LangVersion>7.3</LangVersion>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <!--
+    SIMHUB_INSTALL_PATH must point at the folder containing SimHubWPF.exe
+    (typically "C:\Program Files (x86)\SimHub"). The PostBuildEvent copies the
+    plugin DLL there so SimHub picks it up on next start.
+  -->
+  <PropertyGroup>
+    <SimHubPath Condition=" '$(SimHubPath)' == '' and '$(SIMHUB_INSTALL_PATH)' != '' ">$(SIMHUB_INSTALL_PATH)</SimHubPath>
+    <SimHubPath Condition=" '$(SimHubPath)' == '' ">C:\Program Files (x86)\SimHub</SimHubPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="GameReaderCommon">
+      <HintPath>$(SimHubPath)\GameReaderCommon.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="SimHub.Plugins">
+      <HintPath>$(SimHubPath)\SimHub.Plugins.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="SimHub.Logging">
+      <HintPath>$(SimHubPath)\SimHub.Logging.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="log4net">
+      <HintPath>$(SimHubPath)\log4net.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="CydFlagsPlugin.cs" />
+    <Compile Include="CydFlagsSettings.cs" />
+    <Compile Include="DeviceClient.cs" />
+    <Compile Include="FlagModel.cs" />
+    <Compile Include="FlagReader.cs" />
+    <Compile Include="TimingBuilder.cs" />
+    <Compile Include="RaceLogicBuilder.cs" />
+    <Compile Include="UI\CydFlagsSettingsView.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Target Name="CopyToSimHub" AfterTargets="Build" Condition="Exists('$(SimHubPath)\SimHubWPF.exe')">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(SimHubPath)" />
+    <Copy SourceFiles="$(TargetDir)$(TargetName).pdb" DestinationFolder="$(SimHubPath)" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
+  </Target>
+</Project>

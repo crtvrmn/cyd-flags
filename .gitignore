@@ -1,0 +1,31 @@
+# Build output / dependencies that are specific to a machine
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# ESPHome build output and credentials
+firmware/.esphome/
+firmware/secrets.yaml
+.esphome-data/
+.cache/
+.platformio/
+.scratch/
+
+# Local Python environments
+.venv/
+.venv-esphome/
+
+# Local, non-redistributed tools and SimHub SDK assemblies
+refs/
+tools/dotnet/
+tools/dotnet-home/
+tools/refasm/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Local dotnet CLI home
+.dotnet-home/

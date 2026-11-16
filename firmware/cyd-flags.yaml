@@ -1,0 +1,583 @@
+# ---------------------------------------------------------------------------
+# CYD Flags - sim racing flag display for the "Cheap Yellow Display"
+#
+# Board: ESP32-2432S028R (2.8" 320x240 ILI9341, ESP32-WROOM-32)
+#        Portrait 240x320 by default; set display_rotation: "90" for landscape.
+#
+# The display is driven by a SimHub plugin (CydFlags.dll) over the ESPHome
+# web server REST API:
+#
+#   POST /select/flag/set?option=YELLOW
+#   POST /text/game/set?value=Assetto%20Corsa
+#   POST /number/heartbeat/set?value=42
+#   POST /number/brightness/set?value=80
+#
+# Entity names are deliberately lowercase and match the URLs above.
+# ---------------------------------------------------------------------------
+
+substitutions:
+  device_name: cyd-flags
+  friendly_name: CYD Flags
+  # Original CYD (micro-USB only, ILI9341):
+  display_model: ESP32-2432S028
+  # Dual-USB CYD with ST7789V:            ESP32-2432S028-7789
+  # Dual-USB CYD with ILI9342:            ESP32-2432S028-9342
+  # 0 = portrait 240x320 (USB port at the top/bottom), 90 = landscape 320x240.
+  # The layout below adapts to both; 180/270 flip the image.
+  display_rotation: "0"
+  backlight_pin: GPIO21
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  min_version: 2024.10.0
+  on_boot:
+    # Runs after all components (including the LEDC output) have been set up.
+    # Setting the backlight earlier fails with "ledc.output: Not yet
+    # initialized" and leaves the panel dark.
+    - priority: -100
+      then:
+        - output.set_level:
+            id: backlight
+            level: 0.9
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+logger:
+  level: INFO
+  baud_rate: 115200
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none
+  ap:
+    ssid: "${friendly_name} fallback"
+    password: !secret fallback_password
+    # Start the setup AP quickly instead of waiting the default 90 s.
+    ap_timeout: 15s
+
+captive_portal:
+
+# Lets ESPHome Web / the ESPHome dashboard ask for your WiFi name and password
+# right after the first USB flash (Improv over the USB serial port). This is
+# the easiest path for a new device; the fallback AP below remains available
+# if provisioning is skipped.
+improv_serial:
+
+# Real wall clock for the idle screen. Requires the CYD to have internet
+# access (it does not need to reach the PC, just an NTP server).
+time:
+  - platform: sntp
+    id: wall_clock
+    timezone: Europe/Berlin
+    servers:
+      - 0.pool.ntp.org
+      - 1.pool.ntp.org
+
+web_server:
+  port: 80
+  # version 2 is the default. The REST paths used above are the same in v2/v3.
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# ---------------------------------------------------------------------------
+# Display
+# ---------------------------------------------------------------------------
+
+spi:
+  # Display bus (HSPI). MISO is not needed for the write-only panel; leaving
+  # GPIO12 free also avoids the MTDI strapping-pin warning.
+  - id: lcd
+    clk_pin: GPIO14
+    mosi_pin: GPIO13
+  # The XPT2046 touch controller has its own SPI pins on the CYD.
+  - id: touch
+    clk_pin: GPIO25
+    mosi_pin: GPIO32
+    miso_pin: GPIO39
+
+display:
+  - platform: mipi_spi
+    id: screen
+    model: ${display_model}
+    spi_id: lcd
+    rotation: ${display_rotation}
+    # 25% of 240x320x16bpp = ~38 KB. The driver draws the panel in horizontal
+    # bands, so a full-screen lambda still works without PSRAM. Keeping the
+    # buffer small leaves enough heap for WiFi + web server.
+    buffer_size: 25%
+    # Redraw at a fixed cadence instead of on every entity change. During a
+    # chaotic race the flag can change several times per second; drawing every
+    # change made the panel fall behind. 300 ms still feels immediate.
+    update_interval: 300ms
+
+    lambda: |-
+      const int W = it.get_width();
+      const int H = it.get_height();
+      const bool portrait = H > W;
+
+      const bool link = id(link_seen) && (millis() - id(link_last_ms) < 5000);
+      const std::string flag = id(flag_state);
+      const bool checkered = link && flag == "CHECKERED";
+
+      auto now = id(wall_clock).now();
+      std::string clock_text = "--:--";
+      std::string date_text = "CLOCK SYNC";
+      if (now.is_valid()) {
+        clock_text = now.strftime("%H:%M");
+        date_text = now.strftime("%d.%m.%Y");
+      }
+
+      // Race payload: three rows, ';' between rows and '~' between fields:
+      // position~name~gap~gapcolor~lap~lapcolor. The plugin sends this only
+      // for a real race session; practice/qualifying/menus fall back to the
+      // clock. Color codes: -=none, G=green, R=red, P=purple.
+      const std::string timing = id(timing_raw);
+      const std::string logic_text = id(logic).state;
+      const bool flag_active = link && flag != "NONE";
+      // A flag still takes over the whole screen. While a race is running a
+      // tap cycles through tower -> race logic -> clock.
+      const bool race_session = id(race_mode) && !timing.empty() && !flag_active;
+      const int view = id(race_view);
+      const bool race = race_session && view == 0;
+      const bool logic_page = race_session && view == 1 && !logic_text.empty();
+
+      Color bg = Color(12, 14, 20);
+      Color fg = Color(235, 235, 240);
+
+      if (!race && !logic_page) {
+        if (!link) {
+          bg = Color(12, 14, 20);
+          fg = Color(235, 235, 240);
+        } else if (flag == "GREEN") {
+          bg = Color(0, 140, 60); fg = Color(255, 255, 255);
+        } else if (flag == "YELLOW") {
+          bg = Color(255, 205, 0); fg = Color(20, 16, 0);
+        } else if (flag == "BLUE") {
+          bg = Color(0, 70, 200); fg = Color(255, 255, 255);
+        } else if (flag == "WHITE") {
+          bg = Color(235, 235, 235); fg = Color(10, 10, 10);
+        } else if (flag == "CHECKERED") {
+          bg = Color(235, 235, 235); fg = Color(255, 255, 255);
+        } else if (flag == "RED") {
+          bg = Color(200, 20, 25); fg = Color(255, 255, 255);
+        } else if (flag == "BLACK") {
+          bg = Color(8, 8, 8); fg = Color(240, 240, 240);
+        } else if (flag == "ORANGE") {
+          bg = Color(255, 110, 0); fg = Color(20, 10, 0);
+        }
+      }
+
+      it.fill(bg);
+
+      // Checkered pattern: 20 px squares, exactly fills both orientations.
+      if (checkered) {
+        for (int y = 0; y < H; y += 20) {
+          for (int x = 0; x < W; x += 20) {
+            if (((x / 20) + (y / 20)) % 2 == 0) {
+              it.filled_rectangle(x, y, 20, 20, Color(20, 20, 20));
+            }
+          }
+        }
+        if (portrait) {
+          it.filled_rectangle(0, 90, W, 140, Color(0, 0, 0));
+        } else {
+          it.filled_rectangle(0, 64, W, 112, Color(0, 0, 0));
+        }
+      }
+
+      // The IP is only a boot hint: show it for 15 s after WiFi got a lease,
+      // then get out of the way.
+      const bool show_ip = millis() < id(ip_until) && !id(ip_address).state.empty();
+
+      if (logic_page) {
+        // Current lap, live delta to the personal best, and the three sectors.
+        // Payload: lap~lapcolor~delta~deltacolor~s1~s1color~s2~s2color~s3~s3color
+        std::string f[10];
+        int count = 0;
+        size_t p = 0;
+        while (count < 10 && p <= logic_text.size()) {
+          size_t sep = logic_text.find('~', p);
+          if (sep == std::string::npos) sep = logic_text.size();
+          f[count++] = logic_text.substr(p, sep - p);
+          if (sep == logic_text.size()) break;
+          p = sep + 1;
+        }
+
+        it.print(6, 8, id(font_small), Color(190, 195, 205), TextAlign::CENTER_LEFT, clock_text.c_str());
+        it.print(W / 2, 8, id(font_small), Color(150, 155, 165), TextAlign::CENTER, "RACE LOGIC");
+        if (show_ip) {
+          it.print(W - 6, 8, id(font_small), Color(150, 150, 160), TextAlign::CENTER_RIGHT, id(ip_address).state.c_str());
+        }
+
+        it.print(W / 2, portrait ? 40 : 28, id(font_small), Color(150, 155, 165), TextAlign::CENTER, "CURRENT LAP");
+        it.print(W / 2, portrait ? 58 : 46, id(font_lap), Color(235, 235, 240), TextAlign::CENTER, count > 0 ? f[0].c_str() : "--:--.---");
+
+        const int delta_y = portrait ? 122 : 94;
+        it.print(14, delta_y + 3, id(font_small), Color(150, 155, 165), TextAlign::CENTER_LEFT, "DELTA BEST");
+        Color delta_color(180, 185, 195);
+        if (count > 3 && f[3] == "G") delta_color = Color(80, 240, 130);
+        else if (count > 3 && f[3] == "R") delta_color = Color(255, 90, 80);
+        it.print(W - 14, delta_y, id(font_sub), delta_color, TextAlign::CENTER_RIGHT, count > 2 ? f[2].c_str() : "--.---");
+
+        const int sector_top = portrait ? 160 : 116;
+        const int sector_h = portrait ? 48 : 38;
+        const char *sector_labels[3] = {"S1", "S2", "S3"};
+        for (int i = 0; i < 3; i++) {
+          int y = sector_top + i * sector_h;
+          Color card(26, 30, 40);
+          if (count > 5 + i * 2) {
+            if (f[5 + i * 2] == "G") card = Color(0, 120, 55);
+            else if (f[5 + i * 2] == "R") card = Color(190, 25, 30);
+          }
+          it.filled_rectangle(8, y, W - 16, sector_h - 4, card);
+          it.print(18, y + 8, id(font_sub), Color(245, 245, 245), TextAlign::CENTER_LEFT, sector_labels[i]);
+          it.print(W - 18, y + 8, id(font_sub), Color(245, 245, 245), TextAlign::CENTER_RIGHT,
+                   count > 4 + i * 2 ? f[4 + i * 2].c_str() : "--.---");
+        }
+        return;
+      }
+
+      if (race) {
+        // Small clock top-left; the last/best label sits centred; the IP is a
+        // short-lived boot hint on the right.
+        it.print(6, 8, id(font_small), Color(190, 195, 205), TextAlign::CENTER_LEFT, clock_text.c_str());
+        it.print(W / 2, 8, id(font_small), Color(150, 155, 165), TextAlign::CENTER, id(lap_label).state.c_str());
+        if (show_ip) {
+          it.print(W - 6, 8, id(font_small), Color(150, 150, 160), TextAlign::CENTER_RIGHT, id(ip_address).state.c_str());
+        }
+
+        // Three rows: position~name~gap~gapcolor~lap~lapcolor.
+        std::string fields[3][6];
+        int rows = 0;
+        size_t p = 0;
+        while (rows < 3 && p <= timing.size()) {
+          size_t semi = timing.find(';', p);
+          if (semi == std::string::npos) semi = timing.size();
+          std::string line = timing.substr(p, semi - p);
+          int col = 0;
+          size_t q = 0;
+          while (col < 6 && q <= line.size()) {
+            size_t sep = line.find('~', q);
+            if (sep == std::string::npos) sep = line.size();
+            fields[rows][col] = line.substr(q, sep - q);
+            col++;
+            if (sep == line.size()) break;
+            q = sep + 1;
+          }
+          rows++;
+          if (semi == timing.size()) break;
+          p = semi + 1;
+        }
+
+        if (rows == 0) {
+          // No relative data yet: keep the clock readable.
+          it.print(W / 2, H / 2 - 20, id(font_hero), Color(235, 235, 240), TextAlign::CENTER, clock_text.c_str());
+          return;
+        }
+
+        // Draw a lap time with a P/R/G background when the plugin says so.
+        auto draw_time = [&](int x, int y, auto *font, const std::string &text,
+                             const std::string &code, Color normal) {
+          Color bg_time(0, 0, 0);
+          Color fg_time = normal;
+          if (code == "P") {
+            bg_time = Color(135, 60, 200); fg_time = Color(255, 255, 255);
+          } else if (code == "R") {
+            bg_time = Color(190, 25, 30); fg_time = Color(255, 255, 255);
+          } else if (code == "G") {
+            bg_time = Color(0, 120, 55); fg_time = Color(255, 255, 255);
+          }
+          if (code == "P" || code == "R" || code == "G") {
+            int x1, y1, w, h;
+            it.get_text_bounds(x, y, text.c_str(), font, TextAlign::CENTER_LEFT, &x1, &y1, &w, &h);
+            it.filled_rectangle(x1 - 1, y1 - 1, w + 2, h + 2, bg_time);
+          }
+          it.print(x, y, font, fg_time, TextAlign::CENTER_LEFT, text.c_str());
+        };
+
+        // No sector times any more: the extra height makes the lap time and
+        // driver name noticeably bigger.
+        const int row_h = H >= 300 ? 96 : 72;
+        const int top = 24;
+        for (int i = 0; i < rows; i++) {
+          int y = top + i * row_h;
+          if (i == 1) {
+            it.filled_rectangle(0, y, W, row_h - 2, Color(22, 32, 50));
+          }
+
+          // Small position badge, larger name/lap time.
+          it.filled_rectangle(4, y + 10, 26, 26, Color(245, 245, 245));
+          it.print(17, y + 23, id(font_row_pos), Color(10, 10, 12), TextAlign::CENTER, fields[i][0].c_str());
+
+          std::string name = fields[i][1];
+          if (name.size() > 11) name = name.substr(0, 11);
+          it.print(34, y + 10, id(font_row_name), fg, TextAlign::CENTER_LEFT, name.c_str());
+
+          Color gap_color(130, 220, 255);
+          if (fields[i][3] == "G") {
+            gap_color = Color(80, 240, 130);
+          } else if (fields[i][3] == "R") {
+            gap_color = Color(255, 90, 80);
+          }
+          if (!fields[i][2].empty()) {
+            it.print(W - 5, y + 10, id(font_sub), gap_color, TextAlign::CENTER_RIGHT, fields[i][2].c_str());
+          }
+
+          draw_time(34, y + 42, id(font_row_name), fields[i][4], fields[i][5], Color(215, 220, 230));
+          it.line(4, y + row_h - 2, W - 4, y + row_h - 2, Color(40, 46, 58));
+        }
+        return;
+      }
+
+      // Clock / flag screen. Flag names keep priority over the clock.
+      std::string title = clock_text;
+      std::string sub = date_text;
+      if (!link) {
+        sub = "NO LINK";
+      } else if (flag == "GREEN") {
+        title = "GREEN"; sub = "TRACK CLEAR";
+      } else if (flag == "YELLOW") {
+        title = "YELLOW"; sub = "CAUTION";
+      } else if (flag == "BLUE") {
+        title = "BLUE"; sub = "LET FASTER CARS BY";
+      } else if (flag == "WHITE") {
+        title = "WHITE"; sub = "FINAL LAP";
+      } else if (flag == "CHECKERED") {
+        title = "FINISH"; sub = "CHECKERED FLAG";
+      } else if (flag == "RED") {
+        title = "RED"; sub = "SESSION STOPPED";
+      } else if (flag == "BLACK") {
+        title = "BLACK"; sub = "PENALTY - PIT";
+      } else if (flag == "ORANGE") {
+        title = "ORANGE"; sub = "MEATBALL - DAMAGE";
+      }
+
+      const bool clock_screen = !link || flag == "NONE";
+      const Color hero_color = link ? fg : Color(255, 185, 70);
+      const Color sub_color = link ? fg : Color(210, 170, 90);
+      const int hero_y = portrait ? 152 : (checkered ? 104 : 112);
+      const int sub_y = portrait ? 206 : (checkered ? 154 : 166);
+      auto *hero_font = id(font_hero);
+      if (portrait && !clock_screen) hero_font = id(font_hero_p);
+      it.print(W / 2, hero_y, hero_font, hero_color, TextAlign::CENTER, title.c_str());
+      it.print(W / 2, sub_y, id(font_sub), sub_color, TextAlign::CENTER, sub.c_str());
+
+      if (show_ip) {
+        it.print(6, H - 12, id(font_small), Color(150, 150, 160), TextAlign::CENTER_LEFT, id(ip_address).state.c_str());
+      }
+
+# Full-screen tap toggles the race tower / clock. Coordinates are deliberately
+# not used, so a rough calibration is enough; the whole panel is one button.
+# Flags keep priority, and taps outside a race are ignored.
+touchscreen:
+  - platform: xpt2046
+    id: cyd_touch
+    spi_id: touch
+    cs_pin: GPIO33
+    update_interval: 50ms
+    calibration:
+      x_min: 0
+      x_max: 4095
+      y_min: 0
+      y_max: 4095
+    on_touch:
+      - lambda: |-
+          if (id(race_mode) && !id(timing_raw).empty() && id(flag_state) == "NONE") {
+            id(race_view) = (id(race_view) + 1) % 3;
+          }
+font:
+  - file: "fonts/DejaVuSansCondensed-Bold.ttf"
+    id: font_hero
+    size: 62
+    glyphs: "ABCDEFGHIKLMNORSTUWY 0123456789:-"
+  # Portrait flag names: 39 px keeps CHECKERED inside 240 px.
+  - file: "fonts/DejaVuSansCondensed-Bold.ttf"
+    id: font_hero_p
+    size: 39
+    glyphs: "ABCDEFGHIKLMNORSTUWY "
+  - file: "fonts/DejaVuSansCondensed-Bold.ttf"
+    id: font_row_pos
+    size: 15
+    glyphs: "0123456789?"
+  # Current lap time on the race-logic page (fits 240 px at 40 px).
+  - file: "fonts/DejaVuSansCondensed-Bold.ttf"
+    id: font_lap
+    size: 40
+    glyphs: "0123456789:.-"
+  - file: "fonts/DejaVuSansCondensed-Bold.ttf"
+    id: font_row_name
+    size: 22
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;!?()[]&+/-_'~"
+  - file: "fonts/DejaVuSansCondensed-Bold.ttf"
+    id: font_sub
+    size: 22
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;!?()[]&+/-_'~"
+  - file: "fonts/DejaVuSansCondensed-Bold.ttf"
+    id: font_small
+    size: 13
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;!?()[]&+/-_'~"
+
+# ---------------------------------------------------------------------------
+# Backlight
+# ---------------------------------------------------------------------------
+
+output:
+  - platform: ledc
+    id: backlight
+    pin: ${backlight_pin}
+    frequency: 2000Hz
+
+# ---------------------------------------------------------------------------
+# State for the display
+# ---------------------------------------------------------------------------
+
+globals:
+  - id: flag_state
+    type: std::string
+    restore_value: false
+    initial_value: '"NONE"'
+  - id: game_name
+    type: std::string
+    restore_value: false
+    initial_value: '""'
+  - id: link_seen
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: link_last_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  - id: race_mode
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: timing_raw
+    type: std::string
+    restore_value: false
+    initial_value: '""'
+  - id: ip_until
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  # Set by a tap on the panel; only affects the race view. Flags still win.
+  # 0 = timing tower, 1 = race logic, 2 = clock.
+  - id: race_view
+    type: int
+    restore_value: false
+    initial_value: "0"
+
+select:
+  - platform: template
+    name: flag
+    id: flag
+    optimistic: true
+    initial_option: NONE
+    options:
+      - NONE
+      - GREEN
+      - YELLOW
+      - BLUE
+      - WHITE
+      - CHECKERED
+      - RED
+      - BLACK
+      - ORANGE
+    on_value:
+      - lambda: |-
+          id(flag_state) = x;
+
+text:
+  - platform: template
+    name: game
+    id: game
+    optimistic: true
+    mode: text
+    min_length: 0
+    max_length: 64
+    on_value:
+      - lambda: |-
+          id(game_name) = x;
+  - platform: template
+    name: timing
+    id: timing
+    optimistic: true
+    mode: text
+    min_length: 0
+    max_length: 255
+    on_value:
+      - lambda: |-
+          id(timing_raw) = x;
+  - platform: template
+    name: race
+    id: race
+    optimistic: true
+    mode: text
+    min_length: 0
+    max_length: 8
+    on_value:
+      - lambda: |-
+          id(race_mode) = (x == "RACE");
+          if (x != "RACE") id(race_view) = 0;
+  - platform: template
+    name: logic
+    id: logic
+    optimistic: true
+    mode: text
+    min_length: 0
+    max_length: 255
+  - platform: template
+    name: lap_label
+    id: lap_label
+    optimistic: true
+    mode: text
+    min_length: 0
+    max_length: 8
+
+number:
+  # Backlight brightness, 0..100 %. The panel is on by default after boot.
+  - platform: template
+    name: brightness
+    id: brightness
+    optimistic: true
+    min_value: 0
+    max_value: 100
+    step: 1
+    mode: slider
+    initial_value: 90
+    on_value:
+      - output.set_level:
+          id: backlight
+          level: !lambda "return x / 100.0f;"
+
+  # Heartbeat is a monotonically increasing counter written by the SimHub
+  # plugin about once per second. Any value refreshes the link timer.
+  - platform: template
+    name: heartbeat
+    id: heartbeat
+    optimistic: true
+    min_value: 0
+    max_value: 1000000
+    step: 1
+    mode: box
+    initial_value: 0
+    on_value:
+      - lambda: |-
+          id(link_seen) = true;
+          id(link_last_ms) = millis();
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      id: ip_address
+      internal: true
+      on_value:
+        - lambda: |-
+            if (!x.empty()) id(ip_until) = millis() + 15000;
