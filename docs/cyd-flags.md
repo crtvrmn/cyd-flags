@@ -217,6 +217,11 @@ The groups below the selector always edit the **selected display**:
   priority over all pages. Timing data is only sent to displays with the tower
   page enabled, race-logic data only to displays with the logic page enabled,
   so switching a page off also saves network traffic.
+- **Only show tower/logic/delta during a race** — global option, unchecked by
+  default. Unchecked means the plugin builds and sends the tower, race-logic and
+  delta payloads in practice, qualifying and the menus too, so those pages are
+  available everywhere. Check it to keep the big clock outside races and only
+  enable the three race pages during a race.
 - **Display orientation** — **Portrait (240×320)** or **Landscape (320×240)**
   for the selected CYD. The plugin sends `orientation`; the firmware rotates at
   runtime, so the same image works for both mountings. One orientation applies
@@ -270,7 +275,7 @@ rotates it at runtime. There are six screen types:
    behind), each with position, driver name, gap and lap time. A small clock
    sits in the top-left; no date. The header above the rows says **LAST** or
    **BEST** (plugin setting) and **PIT** is appended while you are in the pit
-   lane. The gap is green while the car ahead is being caught (and red while it
+   lane. By default the tower is also available in practice and qualifying. The gap is green while the car ahead is being caught (and red while it
    pulls away); for the car behind the colors are reversed. The lap time gets a
    background: **purple** for the fastest lap, **red** when it is faster than
    your own lap, **green** when it is slower. Your own row has no gap (0.00 is
@@ -294,8 +299,9 @@ rotates it at runtime. There are six screen types:
 **Touch:** the panel is split by a 24 px dead cross. The **bottom-left
 quadrant** goes to the previous page, the **bottom-right quadrant** to the
 next; both wrap and skip disabled pages. The cycle is
-**tower → race logic → rev limiter → clock**, and the rev/clock pages also work
-outside a race. The **top-left quadrant on the idle clock** opens the alarm
+**tower → race logic → rev limiter → clock**. By default all pages also work
+outside a race; with the race-pages option checked, practice/qualifying show
+only rev limiter and clock. The **top-left quadrant on the idle clock** opens the alarm
 setup; during setup the four quadrants are +1 h / +5 min / off / save. During
 the alarm overlay any tap stops it.
 An active flag still has priority over all pages. The touch controller

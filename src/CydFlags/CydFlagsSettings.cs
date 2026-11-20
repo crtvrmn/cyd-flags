@@ -114,6 +114,12 @@ namespace CydFlags
         /// <summary>Log every HTTP request (useful while setting up).</summary>
         public bool LogRequests = false;
 
+        /// <summary>When false (default), the tower/logic/delta pages are also
+        /// produced in practice, qualifying and the menus. When true they are
+        /// only produced during a race, leaving the big clock for everything
+        /// else.</summary>
+        public bool RacePagesOnly = false;
+
         /// <summary>The displays this plugin drives. At least one device exists
         /// after <see cref="Clamp"/>.</summary>
         public List<CydFlagsDeviceSettings> Devices = new List<CydFlagsDeviceSettings>();

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.3
+
+* **Race pages outside a race.** A new global plugin option controls whether the
+  relative tower, race logic and previous-lap delta are also produced in
+  practice, qualifying and the menus. It is **unchecked by default**, so those
+  pages now work everywhere; check *Only show tower/logic/delta during a race*
+  to restore the old race-only behaviour and keep the big clock in practice.
+* Plugin-side change only; firmware 0.7.2 and newer already understands the
+  `RACE` mode from the plugin.
+
 ## 0.7.2
 
 * **Rev limiter refreshes at 10 Hz.** The display now switches its own redraw

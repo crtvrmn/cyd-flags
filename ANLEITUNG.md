@@ -17,7 +17,8 @@ Am Ende zeigt dein „Cheap Yellow Display“ (CYD):
   an der Grenze rot blinkt (auch im Training/Qualifying),
 - **Tippen** auf die unteren Ecken: unten rechts = nächste Seite, unten links =
   zurück. Reihenfolge: Turm → Racelogic → Rev-Limiter → Uhr → Turm. Im
-  Training/Qualifying gibt es Rev-Limiter und Uhr. Flaggen haben Vorrang,
+  standardmäßig gibt es alle Seiten auch im Training/Qualifying; mit der
+  Race-Pages-Option nur Rev-Limiter und Uhr. Flaggen haben Vorrang,
 - eine **Alarm-Uhr**: oben links auf der Uhr tippen und mit den vier Ecken
   Stunden/Minuten stellen, speichern und scharf schalten,
 - die IP-Adresse nur in den ersten 15 Sekunden nach dem Start.
@@ -246,6 +247,10 @@ Diese Bereiche bearbeiten immer das im Auswahlfeld gewählte Display:
   pro Display. Das Plugin dreht die Anzeige zur Laufzeit; du brauchst keine
   andere Firmware-Datei. Die Einstellung gilt für das ganze Display, nicht für
   einzelne Seiten.
+- **Only show tower/logic/delta during a race:** globale Option. Standardmäßig
+  **aus**, damit Turm, Racelogic und Delta auch im Training/Qualifying
+  funktionieren. Einschalten, wenn außerhalb des Rennens nur die große Uhr
+  erscheinen soll.
 - **Race tower: show best lap instead of last lap:** pro Display wählbar, ob
   der Turm **LAST** oder **BEST** anzeigt.
 - **WiFi on this display:** Trage **SSID** und **Passwort** ein und klicke
@@ -275,8 +280,9 @@ relativen Fahrer zu allen aktivierten Displays.
   Im Plugin kannst du zwischen **LAST** (letzte Runde) und **BEST** (beste
   Runde) umschalten. Bist du in der Boxengasse, steht oben zusätzlich **PIT**.
   **Tippen** auf die unteren Ecken schaltet weiter: **Turm → Racelogic →
-  Rev-Limiter → große Uhr → Turm**. Im Rennen funktionieren alle Seiten; im
-  Training/Qualifying nur Rev-Limiter und Uhr. Eine Flagge hat immer Vorrang.
+  Rev-Limiter → große Uhr → Turm**. Standardmäßig funktionieren alle Seiten
+  auch im Training/Qualifying; mit *Only show tower/logic/delta during a race*
+  dort nur Rev-Limiter und Uhr. Eine Flagge hat immer Vorrang.
   Die Racelogic-Seite zeigt deine aktuelle Runde, das Delta zur persönlichen
   Bestzeit und die drei Sektoren (grün = schneller, rot = langsamer als deine
   Bestzeit; noch nicht gefahrene Sektoren bleiben neutral). Der Rev-Limiter
@@ -311,7 +317,7 @@ relativen Fahrer zu allen aktivierten Displays.
 | Kein WLAN **`CYD Flags fallback`** und `192.168.4.1` nicht erreichbar | Wichtig: Du musst **zuerst** am Handy/PC mit `CYD Flags fallback` verbunden sein, sonst ist `192.168.4.1` nicht erreichbar. Dann: RST-Taste am Display drücken, 20 s warten. Prüfe, ob du wirklich eine `.factory.bin` (ca. 1 MB) und nicht die `.ota.bin` geflasht hast. Wenn das Display schwarz bleibt, ist die Firmware nicht gestartet → neu flashen. |
 | ESPHome Web fragt nach dem Flashen **nicht** nach WLAN | Nicht schlimm: Kabel abziehen, wieder anstecken, 20 s warten und das Fallback-WLAN benutzen. Die Abfrage ist nur eine Abkürzung. |
 | Flaggen kommen **nicht** an | Teste im Browser: `http://<IP>/select/flag` – kommt JSON? Dann liest SimHub die Flaggen des Spiels nicht. Prüfe in SimHub, ob das Spiel erkannt wird. |
-| **Tippen** schaltet die Seite nicht um | Unten rechts = nächste, unten links = zurück; die oberen Ecken sind für den Alarm reserviert. Im Rennen gibt es alle Seiten, im Training/Qualifying nur Rev-Limiter und Uhr. Bei einer aktiven Flagge reagiert die Navigation nicht. Bei ganz alter Firmware fehlt die Touch-Funktion → neue Datei flashen. |
+| **Tippen** schaltet die Seite nicht um | Unten rechts = nächste, unten links = zurück; die oberen Ecken sind für den Alarm reserviert. Standardmäßig gibt es alle Seiten überall; mit der Race-Pages-Option im Training/Qualifying nur Rev-Limiter und Uhr. Bei einer aktiven Flagge reagiert die Navigation nicht. Bei ganz alter Firmware fehlt die Touch-Funktion → neue Datei flashen. |
 | **Touch reagiert links/rechts vertauscht** | Firmware 0.7.2 korrigiert die gespiegelte X-Achse des CYD-Touchcontrollers. Neue Factory-/OTA-Datei flashen. |
 | Racelogic-Sektoren bleiben **`--.---`** | Dein Spiel liefert keine aktuellen Sektorzeiten. Runde und Delta funktionieren trotzdem; die Sektoren füllen sich, sobald das Spiel sie meldet. |
 | Alles geht, aber nach Router-Neustart nicht mehr | Die IP hat sich geändert. Neue IP auf dem Display ablesen und im Plugin eintragen. |

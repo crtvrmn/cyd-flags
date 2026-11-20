@@ -28,6 +28,7 @@ namespace CydFlags.UI
 
         // Global settings.
         private CheckBox _enabled;
+        private CheckBox _racePagesOnly;
         private TextBox _heartbeat;
         private TextBox _minInterval;
         private CheckBox _logRequests;
@@ -150,12 +151,15 @@ namespace CydFlags.UI
                 _minInterval = AddText(root, "Minimum gap between flag packets (ms)",
                     () => Settings.MinSendIntervalMs.ToString(CultureInfo.InvariantCulture),
                     v => Settings.MinSendIntervalMs = ParseInt(v, Settings.MinSendIntervalMs), 70);
+                _racePagesOnly = AddCheck(root, "Only show tower/logic/delta during a race",
+                    () => Settings.RacePagesOnly, v => Settings.RacePagesOnly = v);
 
                 root.Children.Add(new TextBlock
                 {
                     Text = "The heartbeat tells each display that the PC is still alive; without one it shows " +
                            "NO SIMHUB after a few seconds. A small gap between flag packets avoids flicker during " +
-                           "rapid flag changes.",
+                           "rapid flag changes. Leave the race-pages option unchecked to get tower, race logic and " +
+                           "the delta bar in practice and qualifying too; check it to keep the big clock there.",
                     TextWrapping = TextWrapping.Wrap,
                     MaxWidth = 620,
                     FontSize = 11,
@@ -527,6 +531,7 @@ namespace CydFlags.UI
             if (_minInterval != null)
                 Settings.MinSendIntervalMs = ParseInt(_minInterval.Text, Settings.MinSendIntervalMs);
             Settings.LogRequests = _logRequests != null && _logRequests.IsChecked == true;
+            Settings.RacePagesOnly = _racePagesOnly != null && _racePagesOnly.IsChecked == true;
 
             CydFlagsDeviceSettings device = _device;
             if (device != null)

@@ -24,7 +24,7 @@ namespace CydFlags
     [PluginName("CYD Flags")]
     public class CydFlagsPlugin : IPlugin, IDataPlugin, IWPFSettingsV2
     {
-        public const string Version = "0.7.2";
+        public const string Version = "0.7.3";
 
         public CydFlagsSettings Settings;
 
@@ -305,7 +305,8 @@ namespace CydFlags
                 FlagKind kind = anyFlags ? FlagReader.ReadKind(data.NewData) : FlagKind.None;
                 string game = data.GameName ?? string.Empty;
 
-                bool race = (anyTower || anyLogic) && TimingBuilder.IsRaceSession(data.NewData);
+                bool raceSession = TimingBuilder.IsRaceSession(data.NewData);
+                bool race = (anyTower || anyLogic) && (raceSession || !Settings.RacePagesOnly);
                 string timingLast = string.Empty;
                 string timingBest = string.Empty;
                 string logicPayload = string.Empty;

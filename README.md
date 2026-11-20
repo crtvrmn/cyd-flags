@@ -71,7 +71,9 @@ From the plugin you can also:
 
 - **Choose pages per display** — flags only, clock only, tower, race logic,
   rev limiter, or any combination. Disabled pages disappear from that
-  display's corner navigation and the ESP stores the choice.
+  display's corner navigation and the ESP stores the choice. By default the
+  tower, race logic and delta also work in practice/qualifying; a global
+  checkbox restricts them to races and keeps the big clock elsewhere.
 - **Choose the mounting orientation per display** — portrait 240×320 or
   landscape 320×240; applied at runtime, no separate firmware image.
 - **Show a live delta bar** to the previous lap on the race tower: green to the
