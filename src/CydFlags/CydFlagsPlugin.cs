@@ -24,7 +24,7 @@ namespace CydFlags
     [PluginName("CYD Flags")]
     public class CydFlagsPlugin : IPlugin, IDataPlugin, IWPFSettingsV2
     {
-        public const string Version = "0.7.9";
+        public const string Version = "0.7.10";
 
         public CydFlagsSettings Settings;
 

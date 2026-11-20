@@ -30,7 +30,7 @@ substitutions:
   # On boards without a speaker this is simply silent.
   alarm_sound_pin: GPIO26
   # Shown on the boot splash; update together with the plugin version.
-  firmware_version: "0.7.8"
+  firmware_version: "0.7.9"
 
 esphome:
   name: ${device_name}
@@ -101,6 +101,7 @@ udp:
         if (data.empty()) return;
         id(udp_rx_count)++;
         id(udp_last_ms) = millis();
+        id(udp_rx).publish_state(std::to_string(id(udp_rx_count)));
         std::string payload(data.begin() + 1, data.end());
         if (!payload.empty() && payload.back() == '\n') payload.pop_back();
         switch (data[0]) {
@@ -1164,6 +1165,17 @@ text:
     mode: text
     min_length: 0
     max_length: 8
+  # UDP receive counter as a text entity: the ESPHome sensor HTTP endpoint
+  # returns an empty reply on this build, but text entities work.
+  - platform: template
+    name: udp_rx
+    id: udp_rx
+    optimistic: true
+    mode: text
+    min_length: 0
+    max_length: 12
+    initial_value: "0"
+    restore_value: false
   # Comma-separated page list sent by the plugin: flags,clock,tower,logic,rev.
   # An empty value means "all pages" for compatibility; "none" hides all.
   - platform: template
@@ -1250,17 +1262,6 @@ number:
       - lambda: |-
           id(link_seen) = true;
           id(link_last_ms) = millis();
-
-sensor:
-  # Test hook for the plugin: how many UDP datagrams has the display received?
-  # The plugin polls this over HTTP to tell whether the fast path really works.
-  - platform: template
-    name: udp_rx
-    id: udp_rx
-    update_interval: 1s
-    accuracy_decimals: 0
-    lambda: |-
-      return (float) id(udp_rx_count);
 
 text_sensor:
   - platform: wifi_info

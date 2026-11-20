@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.10
+
+* **UDP confirmation via `text/udp_rx`.** This ESPHome build returns an empty
+  reply for `/sensor/...`, so the plugin could never read the UDP counter and
+  stayed at `UDP: unknown` with an error. The counter is now a text entity;
+  the plugin reads `/text/udp_rx`, confirms real UDP delivery, and only then
+  stops duplicating realtime payloads over HTTP.
+* Plugin 0.7.10, firmware 0.7.9.
+
 ## 0.7.9
 
 * **Flags and test flags always go over HTTP too.** The previous UDP-first

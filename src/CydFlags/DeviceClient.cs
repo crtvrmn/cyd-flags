@@ -125,7 +125,7 @@ namespace CydFlags
         }
 
 
-        /// <summary>Reads the display's UDP receive counter (sensor udp_rx).
+        /// <summary>Reads the display's UDP receive counter (text udp_rx).
         /// Returns false on old firmware or HTTP errors; callers treat that as
         /// "UDP status unknown" rather than a device failure.</summary>
         public bool TryGetUdpRx(out int count, out string error)
@@ -135,7 +135,7 @@ namespace CydFlags
             string url;
             try
             {
-                url = BuildUrl("sensor/udp_rx");
+                url = BuildUrl("text/udp_rx");
             }
             catch (Exception ex)
             {
@@ -147,8 +147,8 @@ namespace CydFlags
             {
                 var request = (HttpWebRequest)WebRequest.Create(url);
                 request.Method = "GET";
-                request.Timeout = 700;
-                request.ReadWriteTimeout = 700;
+                request.Timeout = 1500;
+                request.ReadWriteTimeout = 1500;
                 request.KeepAlive = false;
                 request.Proxy = null;
                 request.UserAgent = "CydFlags/0.1";
