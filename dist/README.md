@@ -10,12 +10,14 @@ landscape at runtime, so the same image supports both mountings.
 | `cyd-flags-portrait-7789.factory.bin` | first USB flash, dual-USB CYD (ST7789V) |
 | `cyd-flags-portrait-9342.factory.bin` | first USB flash, dual-USB CYD (ILI9342) |
 | `*.ota.bin` | wireless update of the matching panel variant |
-| `CydFlags.dll` | SimHub plugin 0.7.1, copy next to `SimHubWPF.exe` |
+| `CydFlags.dll` | SimHub plugin 0.7.2, copy next to `SimHubWPF.exe` |
 
 A factory flash erases the saved WiFi credentials; an OTA update does not.
 
-0.7.1 changes the connection status to **NO WIFI** / **NO SIMHUB** (no more
-`NO LINK`); 0.7.0 added **multiple displays**, **corner navigation**, the
+0.7.2 speeds up the rev-limiter page to 10 Hz and corrects the mirrored touch
+X axis (alarm quadrants and corner navigation). 0.7.1 changes the connection
+status to **NO WIFI** / **NO SIMHUB** (no more `NO LINK`); 0.7.0 added
+**multiple displays**, **corner navigation**, the
 **rev-limiter page**, **per-display orientation**, the **previous-lap delta bar**,
 and the **daily alarm** on the CYD. The firmware and plugin must be updated
 together: the 0.7.0+ plugin sends `rev`, `delta` and `orientation`, which older

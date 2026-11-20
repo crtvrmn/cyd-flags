@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.2
+
+* **Rev limiter refreshes at 10 Hz.** The display now switches its own redraw
+  interval from 300 ms to 100 ms while the rev-limiter page is visible, matching
+  the plugin's 100 ms rev payload. The clock/flag/tower pages keep the calmer
+  300 ms cadence.
+* **Touch X axis corrected.** The CYD's XPT2046 reports the horizontal axis
+  mirrored on this panel. The firmware now sets `transform.mirror_x: true`, so
+  the alarm setup quadrants (+1 h / +5 min / off / save) and the bottom-left /
+  bottom-right page navigation match what is printed on screen.
+* Firmware-side changes; the plugin protocol is unchanged. Plugin 0.7.2 is a
+  version bump only and stays compatible with firmware 0.7.x.
+
 ## 0.7.1
 
 * **Clear connection status.** The CYD no longer shows the generic `NO LINK`.

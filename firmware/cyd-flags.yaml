@@ -189,6 +189,11 @@ display:
       const bool rev_page = view == 3 && avail_rev && !flag_active;
       const bool clock_page = view == 2 && avail_clock;
 
+      // The rev page needs a faster refresh than the static clock/flag pages.
+      // 100 ms matches the plugin's 10 Hz rev payload and avoids drawing the
+      // whole panel 10x/s while the normal pages only need 3.3 Hz.
+      id(screen).set_update_interval(rev_page ? 100 : 300);
+
       // Pages the corner navigation may visit. Keep these rules in sync with
       // the on_touch lambda below.
       const bool nav_tower = id(feat_tower) && race_session && !timing.empty();
@@ -626,6 +631,10 @@ touchscreen:
     spi_id: touch
     cs_pin: GPIO33
     update_interval: 50ms
+    # The CYD's XPT2046 is wired mirror-inverted on the X axis; without this
+    # the alarm quadrant labels and the left/right page navigation are swapped.
+    transform:
+      mirror_x: true
     calibration:
       x_min: 0
       x_max: 4095

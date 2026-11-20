@@ -281,8 +281,9 @@ rotates it at runtime. There are six screen types:
    **red** when it was slower. A sector that has not been completed yet shows
    `--.---` on a neutral background.
 3. **Rev limiter** — large gear, speed in km/h and an RPM bar. The bar turns
-   red and the page blinks when the rev limiter is reached. Available in races
-   and in practice/qualifying.
+   red and the page blinks when the rev limiter is reached. While this page is
+   visible the display redraws at 10 Hz (100 ms) so the bar keeps up; the other
+   pages stay at 300 ms. Available in races and in practice/qualifying.
 4. **Flag** — a flag reported by the game takes over the whole screen, exactly
    like before.
 5. **Clock** — menus, practice, qualifying, and the no-link fallback show the
@@ -299,7 +300,9 @@ setup; during setup the four quadrants are +1 h / +5 min / off / save. During
 the alarm overlay any tap stops it.
 An active flag still has priority over all pages. The touch controller
 (XPT2046) is polled on its own SPI pins; the targets are large quadrants, so no
-precise calibration is needed. The page selection is reset to the tower when a
+precise calibration is needed. The X axis is mirror-inverted on the CYD, which
+the firmware compensates with `transform.mirror_x: true` so left/right and the
+four alarm buttons match the screen. The page selection is reset to the tower when a
 new race session starts.
 
 ```

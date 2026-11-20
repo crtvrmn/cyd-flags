@@ -312,6 +312,7 @@ relativen Fahrer zu allen aktivierten Displays.
 | ESPHome Web fragt nach dem Flashen **nicht** nach WLAN | Nicht schlimm: Kabel abziehen, wieder anstecken, 20 s warten und das Fallback-WLAN benutzen. Die Abfrage ist nur eine Abkürzung. |
 | Flaggen kommen **nicht** an | Teste im Browser: `http://<IP>/select/flag` – kommt JSON? Dann liest SimHub die Flaggen des Spiels nicht. Prüfe in SimHub, ob das Spiel erkannt wird. |
 | **Tippen** schaltet die Seite nicht um | Unten rechts = nächste, unten links = zurück; die oberen Ecken sind für den Alarm reserviert. Im Rennen gibt es alle Seiten, im Training/Qualifying nur Rev-Limiter und Uhr. Bei einer aktiven Flagge reagiert die Navigation nicht. Bei ganz alter Firmware fehlt die Touch-Funktion → neue Datei flashen. |
+| **Touch reagiert links/rechts vertauscht** | Firmware 0.7.2 korrigiert die gespiegelte X-Achse des CYD-Touchcontrollers. Neue Factory-/OTA-Datei flashen. |
 | Racelogic-Sektoren bleiben **`--.---`** | Dein Spiel liefert keine aktuellen Sektorzeiten. Runde und Delta funktionieren trotzdem; die Sektoren füllen sich, sobald das Spiel sie meldet. |
 | Alles geht, aber nach Router-Neustart nicht mehr | Die IP hat sich geändert. Neue IP auf dem Display ablesen und im Plugin eintragen. |
 
