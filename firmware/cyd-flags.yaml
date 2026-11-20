@@ -30,7 +30,7 @@ substitutions:
   # On boards without a speaker this is simply silent.
   alarm_sound_pin: GPIO26
   # Shown on the boot splash; update together with the plugin version.
-  firmware_version: "0.7.11"
+  firmware_version: "0.7.12"
 
 esphome:
   name: ${device_name}
@@ -244,9 +244,10 @@ display:
       const bool clock_page = view == 2 && avail_clock;
 
       // The rev page needs a faster refresh than the static clock/flag pages.
-      // 50 ms matches the plugin's 20 Hz rev payload; the partial redraw below
-      // keeps the SPI traffic small. The other pages only need 3.3 Hz.
-      id(screen).set_update_interval(rev_page ? 50 : ((race || logic_page) ? 80 : 300));
+      // 30 ms (~33 Hz) matches the plugin's 50 Hz rev payload; the partial
+      // redraw below keeps the SPI traffic small. The other pages only need
+      // 3.3 Hz.
+      id(screen).set_update_interval(rev_page ? 30 : ((race || logic_page) ? 80 : 300));
 
       // Pages the corner navigation may visit. Keep these rules in sync with
       // the on_touch lambda below.
@@ -294,22 +295,16 @@ display:
         }
       }
 
-      const bool rev_blink = rev_count > 6 && rev_f[6] == "1" && (millis() / 250) % 2 == 0;
       if (rev_page) {
         bg = Color(10, 12, 18);
         fg = Color(235, 235, 240);
-        if (rev_blink) {
-          bg = Color(190, 20, 25);
-          fg = Color(255, 255, 255);
-        }
       }
       // The IP is only a boot hint: show it for 15 s after WiFi got a lease.
       const bool show_ip = millis() < id(ip_until) && !id(ip_address).state.empty();
-      // The rev page redraws only what changed. A page entry, a blink phase or
-      // the IP hint appearing still needs one full repaint.
+      // The rev page redraws only what changed. A page entry or the IP hint
+      // appearing still needs one full repaint.
       const bool rev_full = rev_page
-                            && (!id(rev_painted) || rev_blink != id(rev_last_blink)
-                                || show_ip != id(rev_last_ip));
+                            && (!id(rev_painted) || show_ip != id(rev_last_ip));
       if (!rev_page || rev_full) {
         it.fill(bg);
       }
@@ -453,47 +448,15 @@ display:
       };
 
       if (rev_page) {
-        auto rev_int = [](const std::string &value) {
-          return (value.empty() || value == "-") ? 0 : atoi(value.c_str());
-        };
         const bool has_speed = rev_count > 1 && rev_f[1] != "-";
-        const bool has_rpm = rev_count > 2 && rev_f[2] != "-";
-        const int max_rpm = rev_count > 3 ? rev_int(rev_f[3]) : 0;
-        const int redline = rev_count > 4 ? rev_int(rev_f[4]) : 0;
-        int percent = rev_count > 5 ? rev_int(rev_f[5]) : 0;
-        if (percent < 0) percent = 0;
-        if (percent > 100) percent = 100;
-
-        const int bar_x = 8;
-        const int bar_y = 8;
-        const int bar_w = W - 16;
-        const int bar_h = 10;
-        const int gear_y = portrait ? 168 : 118;
-        const int speed_y = portrait ? 264 : 208;
-        std::string rpm_line = has_rpm ? rev_f[2] + " RPM" : "-- RPM";
+        const int gear_y = portrait ? 150 : 105;
+        const int speed_y = portrait ? 245 : 185;
         std::string speed_line = has_speed ? rev_f[1] + " km/h" : "-- km/h";
 
-        auto draw_bar = [&]() {
-          it.filled_rectangle(bar_x, bar_y, bar_w, bar_h, Color(35, 38, 48));
-          const int fill_w = bar_w * percent / 100;
-          if (fill_w > 0) {
-            Color fill(60, 220, 120);
-            if (percent >= 90) fill = Color(255, 70, 60);
-            else if (percent >= 70) fill = Color(255, 200, 40);
-            it.filled_rectangle(bar_x, bar_y, fill_w, bar_h, fill);
-          }
-          if (max_rpm > 0 && redline > 0 && redline < max_rpm) {
-            int red_x = bar_x + (bar_w * redline) / max_rpm;
-            it.filled_rectangle(red_x, bar_y, 2, bar_h, Color(255, 255, 255));
-          }
-        };
-
-        // First frame, blink phase, or IP hint: paint the complete page.
+        // Only gear and speed: no RPM bar, no extra labels. A full repaint is
+        // needed on page entry or when the boot IP hint appears; otherwise the
+        // dirty rectangles keep the per-frame SPI transfer tiny.
         if (rev_full) {
-          draw_bar();
-          it.print(8, 27, id(font_small), Color(170, 175, 185), TextAlign::CENTER_LEFT, "REV");
-          it.print(W - 8, 27, id(font_small), Color(170, 175, 185), TextAlign::CENTER_RIGHT,
-                   rpm_line.c_str());
           it.print(W / 2, gear_y, id(font_gear), fg, TextAlign::CENTER, rev_f[0].c_str());
           it.print(W / 2, speed_y, id(font_speed), Color(210, 215, 225),
                    TextAlign::CENTER, speed_line.c_str());
@@ -503,17 +466,6 @@ display:
           }
           draw_nav_hint();
         } else {
-          // Only touch the pieces that changed. The driver sends just the dirty
-          // rectangle, so a gear change costs one small area and RPM updates
-          // cost only the bar.
-          if (percent != id(rev_last_percent)) {
-            draw_bar();
-          }
-          if (rpm_line != id(rev_last_rpm)) {
-            it.filled_rectangle(W - 96, 19, 92, 20, bg);
-            it.print(W - 8, 27, id(font_small), Color(170, 175, 185),
-                     TextAlign::CENTER_RIGHT, rpm_line.c_str());
-          }
           if (rev_f[0] != id(rev_last_gear)) {
             it.filled_rectangle(0, gear_y - 78, W, 156, bg);
             it.print(W / 2, gear_y, id(font_gear), fg, TextAlign::CENTER, rev_f[0].c_str());
@@ -537,9 +489,6 @@ display:
           id(rev_painted) = true;
           id(rev_last_gear) = rev_f[0];
           id(rev_last_speed) = speed_line;
-          id(rev_last_rpm) = rpm_line;
-          id(rev_last_percent) = percent;
-          id(rev_last_blink) = rev_blink;
           id(rev_last_ip) = show_ip;
         }
         draw_udp_badge();
@@ -547,7 +496,7 @@ display:
       }
 
       if (logic_page) {
-        // Current lap, live delta to the personal best, and the three sectors.
+        // Live delta to the personal best and the three sectors.
         // Payload: lap~lapcolor~delta~deltacolor~s1~s1color~s2~s2color~s3~s3color
         std::string f[10];
         int count = 0;
@@ -566,18 +515,17 @@ display:
           it.print(W - 6, 8, id(font_small), Color(150, 150, 160), TextAlign::CENTER_RIGHT, id(ip_address).state.c_str());
         }
 
-        it.print(W / 2, portrait ? 40 : 28, id(font_small), Color(150, 155, 165), TextAlign::CENTER, "CURRENT LAP");
-        it.print(W / 2, portrait ? 58 : 46, id(font_lap), Color(235, 235, 240), TextAlign::CENTER, count > 0 ? f[0].c_str() : "--:--.---");
-
-        const int delta_y = portrait ? 122 : 94;
-        it.print(14, delta_y + 3, id(font_small), Color(150, 155, 165), TextAlign::CENTER_LEFT, "DELTA BEST");
+        // No current-lap time here: the tower already has lap times, and the
+        // freed space makes delta and sector cards readable.
+        const int delta_y = portrait ? 40 : 28;
+        it.print(14, delta_y + 7, id(font_small), Color(150, 155, 165), TextAlign::CENTER_LEFT, "DELTA BEST");
         Color delta_color(180, 185, 195);
         if (count > 3 && f[3] == "G") delta_color = Color(80, 240, 130);
         else if (count > 3 && f[3] == "R") delta_color = Color(255, 90, 80);
         it.print(W - 14, delta_y, id(font_sub), delta_color, TextAlign::CENTER_RIGHT, count > 2 ? f[2].c_str() : "--.---");
 
-        const int sector_top = portrait ? 160 : 116;
-        const int sector_h = portrait ? 48 : 38;
+        const int sector_top = portrait ? 96 : 72;
+        const int sector_h = portrait ? 64 : 50;
         const char *sector_labels[3] = {"S1", "S2", "S3"};
         for (int i = 0; i < 3; i++) {
           int y = sector_top + i * sector_h;
@@ -674,14 +622,15 @@ display:
           if (name.size() > 11) name = name.substr(0, 11);
           it.print(34, y + 10, id(font_row_name), fg, TextAlign::CENTER_LEFT, name.c_str());
 
-          Color gap_color(130, 220, 255);
-          if (fields[i][3] == "G") {
-            gap_color = Color(80, 240, 130);
-          } else if (fields[i][3] == "R") {
-            gap_color = Color(255, 90, 80);
-          }
+          // Traffic trend only: a green + disc when gaining, a red - disc
+          // when losing (or being caught). The numeric gap is not drawn.
           if (!fields[i][2].empty()) {
-            it.print(W - 5, y + 10, id(font_sub), gap_color, TextAlign::CENTER_RIGHT, fields[i][2].c_str());
+            Color trend(130, 220, 255);
+            if (fields[i][3] == "G") trend = Color(0, 150, 70);
+            else if (fields[i][3] == "R") trend = Color(200, 30, 35);
+            it.filled_circle(W - 17, y + 23, 12, trend);
+            it.print(W - 17, y + 11, id(font_row_name), Color(8, 8, 10),
+                     TextAlign::CENTER, fields[i][2].c_str());
           }
 
           draw_time(34, y + 42, id(font_row_name), fields[i][4], fields[i][5], Color(215, 220, 230));
@@ -867,11 +816,6 @@ font:
     id: font_row_pos
     size: 15
     glyphs: "0123456789?"
-  # Current lap time on the race-logic page (fits 240 px at 40 px).
-  - file: "fonts/DejaVuSansCondensed-Bold.ttf"
-    id: font_lap
-    size: 40
-    glyphs: "0123456789:.-"
   - file: "fonts/DejaVuSansCondensed-Bold.ttf"
     id: font_row_name
     size: 22
@@ -993,18 +937,6 @@ globals:
     type: std::string
     restore_value: false
     initial_value: '""'
-  - id: rev_last_rpm
-    type: std::string
-    restore_value: false
-    initial_value: '""'
-  - id: rev_last_percent
-    type: int
-    restore_value: false
-    initial_value: "-1"
-  - id: rev_last_blink
-    type: bool
-    restore_value: false
-    initial_value: "false"
   - id: rev_last_ip
     type: bool
     restore_value: false

@@ -18,10 +18,10 @@ delaying the others.
 
 | situation | screen |
 |-----------|--------|
-| race session | relative tower: car ahead, you, car behind — position, name, gap and lap time; optional live delta-to-previous-lap bar |
+| race session | relative tower: car ahead, you, car behind — position, name, lap time and a green + / red − trend disc; optional live delta-to-previous-lap bar |
 | race session, bottom-right corner | next page: race logic / rev limiter / clock; bottom-left goes back |
-| race logic | current lap, sector times (green/red vs. your best), delta to best |
-| rev limiter | large gear, speed, RPM bar that blinks red at the redline; also in practice/qualifying |
+| race logic | delta to best and sector times (green/red vs. your best) |
+| rev limiter | large gear and km/h only, updated at 33 Hz; also in practice/qualifying |
 | menus / practice / qualifying | large clock and date, with a small alarm shortcut top-left |
 | alarm time reached | full-screen flashing ALARM; tap anywhere to stop |
 | any flag | full-screen flag (red, yellow, blue, white, checkered, black, orange…) |
@@ -35,7 +35,7 @@ suffix while you are in the pit lane. The IP address is shown for the first
 the plugin rotates it at runtime, so one firmware image works for both.
 
 Realtime data goes over **UDP port 18512**: the tower is built at 20 Hz and
-drawn at 12.5 Hz, the rev page at 20 Hz, and the clock/flag screens at 300 ms.
+drawn at 12.5 Hz, the rev page at 33 Hz, and the clock/flag screens at 300 ms.
 Configuration (pages, orientation, brightness, WiFi) still uses HTTP. This is
 the fast path; there is no cloud service in between.
 
@@ -139,7 +139,7 @@ src/CydFlags/                    SimHub plugin (C#, .NET Framework 4.8)
   FlagModel.cs                   flag priority + name parsing (unit-tested)
   TimingBuilder.cs               relative tower payload
   RaceLogicBuilder.cs            lap/sector/delta payload
-  RevBuilder.cs                  gear/speed/RPM payload
+  RevBuilder.cs                  gear/speed payload
   DeltaTracker.cs                previous-lap delta by track position
   DeviceClient.cs                POST client for configuration
   UdpLink.cs                     fast realtime sender (one datagram per value)
@@ -233,10 +233,10 @@ for configuration:
 POST /select/flag/set?option=YELLOW
 POST /text/game/set?value=RaceRoom
 POST /text/race/set?value=RACE          # or CLOCK
-POST /text/timing/set?value=...         # position~name~gap~gapcolor~lap~lapcolor;...
+POST /text/timing/set?value=...         # position~name~trend~trendcolor~lap~lapcolor;...
 POST /text/logic/set?value=...          # lap~lapcolor~delta~deltacolor~s1~...~s3color
 POST /text/lap_label/set?value=LAST     # LAST / BEST / LAST PIT / BEST PIT
-POST /text/rev/set?value=4~123~7800~8500~8000~92~0
+POST /text/rev/set?value=4~123~7800~8500~8000~92~0  # gear/speed drawn
 POST /text/delta/set?value=-0.421       # signed seconds, empty hides
 POST /text/orientation/set?value=portrait  # or landscape
 POST /text/features/set?value=flags,clock,tower,logic,rev  # or none
@@ -256,7 +256,7 @@ to firmware 0.7.0 or newer.
 
 A heartbeat younger than 5 seconds marks the display as linked. Flags sent
 through the web UI alone disappear after 5 seconds; the SimHub plugin sends a
-heartbeat every second.
+heartbeat at 50 ms (UDP), with the HTTP keepalive throttled to 1 s/5 s.
 
 ---
 

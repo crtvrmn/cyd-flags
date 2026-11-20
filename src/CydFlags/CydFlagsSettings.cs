@@ -109,8 +109,10 @@ namespace CydFlags
         public bool Enabled = true;
 
         /// <summary>How often the plugin pings every display so it can show LIVE.
-        /// The display turns to NO SIMHUB after 5 seconds without a heartbeat.</summary>
-        public int HeartbeatMs = 1000;
+        /// The display turns to NO SIMHUB after 5 seconds without a heartbeat.
+        /// Fast UDP frames are independent of this; the HTTP keepalive is
+        /// throttled to 1 s while UDP is unconfirmed and 5 s afterwards.</summary>
+        public int HeartbeatMs = 50;
 
         /// <summary>Minimum spacing between flag / game updates, to avoid
         /// flooding the ESP32 when a game flickers a flag for one frame.</summary>
@@ -152,7 +154,7 @@ namespace CydFlags
 
         public void Clamp()
         {
-            HeartbeatMs = Math.Max(250, Math.Min(10000, HeartbeatMs));
+            HeartbeatMs = Math.Max(20, Math.Min(10000, HeartbeatMs));
             MinSendIntervalMs = Math.Max(50, Math.Min(5000, MinSendIntervalMs));
 
             if (Devices == null) Devices = new List<CydFlagsDeviceSettings>();

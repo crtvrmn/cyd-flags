@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.12
+
+* **Race tower shows a trend disc instead of a gap.** A green **+** means you
+  are gaining, a red **−** means you are losing; no numeric gap is drawn. The
+  disc uses the same direction rules as the old green/red gap text.
+* **Race logic no longer draws the current-lap time.** With the freed space the
+  delta and sector cards are larger and easier to read.
+* **Rev page is gear + km/h only**, with no RPM bar or RPM text. The page is
+  redrawn at 33 Hz (30 ms) and the plugin builds rev at 50 Hz, so the speed
+  reacts noticeably faster.
+* **Heartbeat default is 50 ms**, with the HTTP keepalive throttled to 1 s while
+  UDP is unconfirmed and 5 s afterwards. A 1 ms heartbeat is a link ping, not a
+  refresh rate; it would just flood the ESP32 and is clamped to 20 ms minimum.
+* Plugin 0.7.12, firmware 0.7.12.
+
 ## 0.7.11
 
 * Firmware version is exposed as the text entity `firmware_version`, visible in

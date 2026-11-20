@@ -152,7 +152,7 @@ namespace CydFlags
             double playerLap, bool bestLapMode, string gapColor)
         {
             if (opponent == null)
-                return "0~---~---~-~--:--.---~-";
+                return "0~---~~-~--:--.---~-";
 
             object gap = opponent.RelativeGapToPlayer;
             double gapSeconds;
@@ -167,7 +167,7 @@ namespace CydFlags
             {
                 opponent.Position.ToString(Inv),
                 Clean(opponent.Name),
-                FormatGap(gap),
+                gapValid ? GapSymbol(gapColor) : string.Empty,
                 gapValid ? gapColor : "-",
                 FormatLap(lap),
                 TimeCode(lap, bestLap, playerLap, false)
@@ -188,6 +188,13 @@ namespace CydFlags
                 FormatLap(playerLap),
                 TimeCode(playerLap, bestLap, 0, true)
             });
+        }
+
+        private static string GapSymbol(string color)
+        {
+            if (color == "G") return "+";
+            if (color == "R") return "-";
+            return string.Empty;
         }
 
         private static string GapCode(Opponent opponent, double gapSeconds, bool isAhead)

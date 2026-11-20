@@ -5,16 +5,16 @@ Diese Anleitung ist absichtlich Schritt für Schritt geschrieben. Du brauchst
 
 Am Ende zeigt dein „Cheap Yellow Display“ (CYD):
 
-- im **Rennen**: die Fahrer direkt vor und hinter dir (Platz, Name, Abstand
-  und Rundenzeit) und oben links klein die Uhrzeit. Oben steht **LAST** oder
+- im **Rennen**: die Fahrer direkt vor und hinter dir (Platz, Name, Rundenzeit
+  und ein grüner + / roter − Trend-Punkt) und oben links klein die Uhrzeit. Oben steht **LAST** oder
   **BEST** – das stellst du im Plugin ein.
-- im **Rennen** zusätzlich: eine **Racelogic-Seite** mit deiner aktuellen
-  Runde, dem Delta zur besten Runde und den drei Sektoren (grün = schneller
+- im **Rennen** zusätzlich: eine **Racelogic-Seite** mit dem Delta zur besten
+  Runde und den drei Sektoren (grün = schneller
   als deine Bestzeit, rot = langsamer).
 - außerhalb des Rennens (Menü, Training, Qualifying): **die echte Uhrzeit**,
 - wenn eine Flagge kommt: die Flagge groß auf dem ganzen Bildschirm,
-- eine **Rev-Limiter-Seite** mit großem Gang, km/h und einer RPM-Leiste, die
-  an der Grenze rot blinkt (auch im Training/Qualifying),
+- eine **Rev-Limiter-Seite** mit großem Gang und km/h, ohne Leiste, sehr schnell
+  aktualisiert (auch im Training/Qualifying),
 - **Tippen** auf die unteren Ecken: unten rechts = nächste Seite, unten links =
   zurück. Reihenfolge: Turm → Racelogic → Rev-Limiter → Uhr → Turm. Im
   standardmäßig gibt es alle Seiten auch im Training/Qualifying; mit der
@@ -272,8 +272,9 @@ Starte dein Spiel. SimHub erkennt das Spiel, das Plugin schickt Flaggen und die
 relativen Fahrer zu allen aktivierten Displays.
 
 - **Rennen:** Timing-Turm (vor dir, du, hinter dir) + kleine Uhr oben links.
-  Der Abstand wird **grün**, wenn du näher kommst, und **rot**, wenn der
-  Vordermann wegfährt. Beim Hintermann ist es umgekehrt. Die Rundenzeit hat
+  Der Trend-Punkt wird **grün (+)**, wenn du aufholst, und **rot (−)**, wenn du
+  verlierst. Beim Hintermann ist es umgekehrt: näher kommen = rot, abhängen =
+  grün. Eine Zahl wird nicht mehr angezeigt. Die Rundenzeit hat
   einen farbigen Hintergrund: **violett** = schnellste Runde im Feld, **rot** =
   schneller als deine Runde, **grün** = langsamer. Deine eigene Zeile zeigt
   keinen Abstand (0.00 wäre sinnlos) und ist nur violett, nie rot/grün.
@@ -283,10 +284,9 @@ relativen Fahrer zu allen aktivierten Displays.
   Rev-Limiter → große Uhr → Turm**. Standardmäßig funktionieren alle Seiten
   auch im Training/Qualifying; mit *Only show tower/logic/delta during a race*
   dort nur Rev-Limiter und Uhr. Eine Flagge hat immer Vorrang.
-  Die Racelogic-Seite zeigt deine aktuelle Runde, das Delta zur persönlichen
-  Bestzeit und die drei Sektoren (grün = schneller, rot = langsamer als deine
-  Bestzeit; noch nicht gefahrene Sektoren bleiben neutral). Der Rev-Limiter
-  zeigt Gang, km/h und die RPM-Leiste rot blinkend an der Grenze. Die Uhrzeit
+  Die Racelogic-Seite zeigt das Delta zur persönlichen Bestzeit und die drei
+  Sektoren (grün = schneller, rot = langsamer als deine Bestzeit; noch nicht
+  gefahrene Sektoren bleiben neutral). Der Rev-Limiter zeigt nur Gang und km/h. Die Uhrzeit
   oben links ist im Rennen klein; außerhalb groß mit Datum. Oben links auf der
   Uhr öffnest du den **Alarm**: vier Ecken = Stunde +1, Minute +5, aus, speichern.
 

@@ -24,7 +24,7 @@ namespace CydFlags
     [PluginName("CYD Flags")]
     public class CydFlagsPlugin : IPlugin, IDataPlugin, IWPFSettingsV2
     {
-        public const string Version = "0.7.11";
+        public const string Version = "0.7.12";
 
         public CydFlagsSettings Settings;
 
@@ -381,7 +381,7 @@ namespace CydFlags
                 DateTime revNow = DateTime.UtcNow;
                 if (anyRev)
                 {
-                    if ((revNow - _lastRevBuildUtc).TotalMilliseconds >= 40)
+                    if ((revNow - _lastRevBuildUtc).TotalMilliseconds >= 20)
                     {
                         revPayload = RevBuilder.Build(data.NewData);
                         _lastRevBuildUtc = revNow;
@@ -974,10 +974,17 @@ namespace CydFlags
 
         private static bool SendRealtimeHeartbeat(DeviceState state, int counter)
         {
-            // Always send the HTTP heartbeat too: it is tiny, works with older
-            // firmware that does not know UDP yet, and keeps the display's
-            // "NO SIMHUB" status correct when UDP is blocked by a firewall.
+            // UDP carries the fast heartbeat. HTTP is still needed for older
+            // firmware and blocked UDP, but it is throttled: 1 s while UDP is
+            // unconfirmed, 5 s after the display has answered the counter.
             bool udp = state.Udp.SendHeartbeat(counter);
+            DateTime now = DateTime.UtcNow;
+            double sinceHttp = (now - state.LastHttpHeartbeatUtc).TotalMilliseconds;
+            bool needHttp = !state.UdpConfirmed || state.UdpBlocked;
+            if (sinceHttp < (needHttp ? 1000 : 5000))
+                return udp;
+
+            state.LastHttpHeartbeatUtc = now;
             bool http = state.Client.SendHeartbeat(counter);
             return udp || http;
         }
@@ -1151,6 +1158,7 @@ namespace CydFlags
             public DateTime LastFlagSentUtc;
             public DateTime LastGameSentUtc;
             public DateTime LastHeartbeatUtc;
+            public DateTime LastHttpHeartbeatUtc;
             public DateTime LastRaceModeSentUtc;
             public DateTime LastTimingSentUtc;
             public DateTime LastLogicSentUtc;
@@ -1314,6 +1322,7 @@ namespace CydFlags
             state.LastSentFeatures = null;
             state.LastSentBrightness = -1;
             state.LastHeartbeatUtc = DateTime.MinValue;
+            state.LastHttpHeartbeatUtc = DateTime.MinValue;
             state.LastRaceModeSentUtc = DateTime.MinValue;
             state.LastTimingSentUtc = DateTime.MinValue;
             state.LastLogicSentUtc = DateTime.MinValue;

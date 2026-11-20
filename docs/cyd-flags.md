@@ -11,7 +11,7 @@ game on one or more 2.8" **Cheap Yellow Displays** (ESP32-2432S028R):
 
 Outside a race session (menus, practice, qualifying) the display is a clock.
 In a real race session it shows the car ahead, your car and the car behind with
-position, driver name, gap and lap time — plus a small clock in the top-left.
+position, driver name, lap time and a green + / red − trend disc — plus a small clock in the top-left.
 The header says **LAST** or **BEST** (selectable per display in the plugin) and
 turns into **LAST PIT** while you are in the pit lane.
 When a flag is active it still takes over the whole screen. At boot the panel
@@ -28,8 +28,8 @@ IP only backs off itself: the plugin keeps updating the other panels.
 Realtime data goes over **UDP**, not HTTP. The plugin shows the display's
 received-packet counter in its settings (`UDP: OK`, `UDP: blocked`,
 `UDP: unknown`) so a firewall or wrong-IP problem is visible without guessing. The display itself shows a small `UDP BLOCKED` badge when it is linked over HTTP but has not received a UDP packet for 10 s. The race tower is built at 20 Hz
-and drawn at 12.5 Hz (80 ms), the rev page is built and drawn at 20 Hz (50 ms),
-race logic at 10 Hz; the clock and flag screens stay at 300 ms. That is roughly
+and drawn at 12.5 Hz (80 ms), the rev page is built at 50 Hz and drawn at 33 Hz
+(30 ms), race logic at 12.5 Hz; the clock and flag screens stay at 300 ms. That is roughly
 an order of magnitude less latency than the old HTTP-only path. HTTP is still
 used for configuration (pages, orientation, brightness, WiFi) and for manual
 testing with `curl`.
@@ -279,24 +279,26 @@ The panel can be portrait (240×320) or landscape (320×240); the plugin
 rotates it at runtime. There are six screen types:
 
 1. **Race timing** — only during a real race session. Three rows (ahead, you,
-   behind), each with position, driver name, gap and lap time. A small clock
-   sits in the top-left; no date. The header above the rows says **LAST** or
-   **BEST** (plugin setting) and **PIT** is appended while you are in the pit
-   lane. By default the tower is also available in practice and qualifying. The gap is green while the car ahead is being caught (and red while it
-   pulls away); for the car behind the colors are reversed. The lap time gets a
-   background: **purple** for the fastest lap, **red** when it is faster than
-   your own lap, **green** when it is slower. Your own row has no gap (0.00 is
-   meaningless) and can only be purple, never red/green against itself.
-2. **Race logic** — a third race page with your current lap time, a live delta
-   to your personal best, and the three sector times. Each sector card is
+   behind), each with position, driver name, lap time and a trend disc. A small
+   clock sits in the top-left; no date. The header above the rows says **LAST**
+   or **BEST** (plugin setting) and **PIT** is appended while you are in the pit
+   lane. By default the tower is also available in practice and qualifying.
+   The disc is a green **+** when you are gaining and a red **−** when you are
+   losing (for the car behind, being caught is red and pulling away is green).
+   No numeric gap is drawn. The lap time gets a background: **purple** for the
+   fastest lap, **red** when it is faster than your own lap, **green** when it
+   is slower. Your own row has no disc and can only be purple, never red/green
+   against itself.
+2. **Race logic** — a third race page with a live delta to your personal best
+   and the three sector times; the current-lap time was removed so the cards
+   stay readable. Each sector card is
    **green** when that sector was faster than your best lap's sector and
    **red** when it was slower. A sector that has not been completed yet shows
    `--.---` on a neutral background.
-3. **Rev limiter** — large gear, speed in km/h and an RPM bar. The bar turns
-   red and the page blinks when the rev limiter is reached. While this page is
-   visible the display polls at 20 Hz (50 ms) and only the changed widgets are
-   transferred (RPM bar every frame; gear/speed only when they change). The
-   tower/logic pages use 80 ms, the clock/flag pages 300 ms. Available in races
+3. **Rev limiter** — large gear and speed in km/h only, no bar or RPM text.
+   The page polls at 33 Hz (30 ms) and only the changed gear/speed rectangles
+   are transferred; the plugin builds it at 50 Hz. The tower/logic pages use
+   80 ms, the clock/flag pages 300 ms. Available in races
    and in practice/qualifying.
 4. **Flag** — a flag reported by the game takes over the whole screen, exactly
    like before.
@@ -323,7 +325,7 @@ new race session starts.
 ```
 ┌────────────────────────┐
 │ 16:42  LAST   192.168.1.42│ small clock + header + IP hint
-│ ┌──┐ Fabio Scherer 0.45│  ahead
+│ ┌──┐ Fabio Scherer  +  │  ahead
 │ │ 6│ 1:47.383           │
 │ └──┘                     │
 │ ┌──┐ YOU                │  player row highlighted
@@ -381,7 +383,7 @@ booleans, and falls back to `Flag_Name` if a game only fills the string.
 For the race tower it reads `SessionTypeName` (only `Race` counts; practice,
 qualifying and menus stay on the clock) and the
 `OpponentsAheadOnTrack` / `OpponentsBehindOnTrack` lists, formatting position,
-gap and lap time on the PC. The plugin setting **Race tower: show best lap
+lap time and trend on the PC. The plugin setting **Race tower: show best lap
 instead of last lap** switches the values and the header between LAST and BEST;
 while you are in the pit lane the header appends **PIT**. Driver names are
 folded to plain ASCII (`René` -> `Rene`, `Müller` -> `Mueller`, `MÜLLER` ->
@@ -405,7 +407,7 @@ rest is UTF-8 text (normally newline-terminated):
 |------|---------|---------|
 | `f` | flag option | `fYELLOW` |
 | `g` | game name | `gAssetto Corsa Competizione` |
-| `t` | tower rows (same `;`/`~` format as `/text/timing`) | `t6~Fabio~0.45~G~1:47.383~P;...` |
+| `t` | tower rows (same `;`/`~` format as `/text/timing`) | `t6~Fabio~+~G~1:47.383~P;...` |
 | `l` | race-logic payload | `l1:23.456~-~-0.234~G~31.234~G~35.100~R~--.---~-` |
 | `r` | rev payload | `r4~123~7800~8500~8000~92~0` |
 | `d` | delta seconds | `d-0.421` |
@@ -438,7 +440,7 @@ curl -X POST 'http://cyd-flags.local/text/race/set?value=RACE'
 curl -X POST 'http://cyd-flags.local/text/features/set?value=flags,clock,tower,logic,rev'
 curl -X POST 'http://cyd-flags.local/text/orientation/set?value=portrait'
 
-# rev limiter: gear~speed_kmh~rpm~max_rpm~redline~rpm_percent~blink
+# rev limiter: gear~speed_kmh~... (only the first two fields are drawn)
 curl -X POST 'http://cyd-flags.local/text/rev/set?value=4~123~7800~8500~8000~92~0'
 
 # previous-lap delta: signed seconds, empty hides the bar
@@ -449,12 +451,14 @@ curl -X POST 'http://cyd-flags.local/text/lap_label/set?value=LAST'
 
 # relative timing rows, max 255 chars. Three rows separated by ';', six
 # fields per row separated by '~':
-# position~name~gap~gapcolor~lap~lapcolor
+# position~name~trend~trendcolor~lap~lapcolor
+# trend is + or - (empty when stable); trendcolor G/R, lapcolor P/R/G/-.
 # Colors: -=none, G=green, R=red, P=purple (fastest lap).
-curl -X POST 'http://cyd-flags.local/text/timing/set?value=6~Fabio~0.45~G~1:47.383~P%3B7~YOU~~-~1:48.102~-%3B10~Marcel~9.51~R~1:54.765~R'
+curl -X POST 'http://cyd-flags.local/text/timing/set?value=6~Fabio~%2B~G~1:47.383~P%3B7~YOU~~-~1:48.102~-%3B10~Marcel~-~R~1:54.765~R'
 
-# race-logic page: current lap, delta to personal best, three sectors
+# race-logic page: delta to personal best, three sectors
 # lap~lapcolor~delta~deltacolor~s1~s1color~s2~s2color~s3~s3color
+# (lap is still in the payload for API compatibility; the page no longer draws it)
 # Sector colors compare with your best lap: G faster, R slower.
 curl -X POST 'http://cyd-flags.local/text/logic/set?value=1:23.456~-~-0.234~G~31.234~G~35.100~R~--.---~-'
 
