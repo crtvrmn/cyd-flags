@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.9
+
+* **Flags and test flags always go over HTTP too.** The previous UDP-first
+  send returned success even when the datagram was filtered, so flags (and the
+  plugin's flag test buttons) could disappear completely. Flags/game are now
+  pushed over both transports; they are low-rate, so this is cheap.
+* **On-screen UDP warning.** If the display is linked over HTTP but has not
+  received a UDP packet for 10 s, it shows a small `UDP BLOCKED` badge in the
+  top-right corner, so a blocked fast path is visible on the CYD itself.
+* Plugin 0.7.9, firmware 0.7.8.
+
 ## 0.7.8
 
 * **HTTP fallback until UDP is confirmed.** The plugin sends tower, logic and

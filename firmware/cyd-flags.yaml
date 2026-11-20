@@ -30,7 +30,7 @@ substitutions:
   # On boards without a speaker this is simply silent.
   alarm_sound_pin: GPIO26
   # Shown on the boot splash; update together with the plugin version.
-  firmware_version: "0.7.7"
+  firmware_version: "0.7.8"
 
 esphome:
   name: ${device_name}
@@ -100,6 +100,7 @@ udp:
     - lambda: |-
         if (data.empty()) return;
         id(udp_rx_count)++;
+        id(udp_last_ms) = millis();
         std::string payload(data.begin() + 1, data.end());
         if (!payload.empty() && payload.back() == '\n') payload.pop_back();
         switch (data[0]) {
@@ -173,6 +174,11 @@ display:
       }
 
       const bool link = id(link_seen) && (millis() - id(link_last_ms) < 5000);
+      // UDP is the fast path. If the PC is linked over HTTP but no UDP packet
+      // has arrived for 10 s, say so on the panel instead of silently running
+      // every page through the slow HTTP fallback.
+      const bool udp_ok = id(udp_last_ms) != 0 && (millis() - id(udp_last_ms) < 10000);
+      const bool udp_warn = link && !udp_ok && millis() > 15000;
       // WiFi and SimHub are reported separately: a missing heartbeat has a
       // different cause (PC/SimHub off) than a missing WiFi association.
       const bool wifi_connected = wifi::global_wifi_component != nullptr
@@ -256,6 +262,13 @@ display:
 
       Color bg = Color(12, 14, 20);
       Color fg = Color(235, 235, 240);
+
+      auto draw_udp_badge = [&]() {
+        if (!udp_warn) return;
+        it.filled_rectangle(W - 96, 2, 94, 15, Color(45, 12, 12));
+        it.print(W - 4, 2, id(font_small), Color(255, 125, 95),
+                 TextAlign::TOP_RIGHT, "UDP BLOCKED");
+      };
 
       if (!race && !logic_page && !rev_page) {
         if (!flag_active) {
@@ -408,6 +421,7 @@ display:
       if (!race && !logic_page && !rev_page && !flag_active && !id(feat_clock) && !clock_page) {
         it.print(W / 2, H / 2, id(font_sub), Color(130, 135, 145), TextAlign::CENTER,
                  "NO PAGE");
+        draw_udp_badge();
         return;
       }
 
@@ -527,6 +541,7 @@ display:
           id(rev_last_blink) = rev_blink;
           id(rev_last_ip) = show_ip;
         }
+        draw_udp_badge();
         return;
       }
 
@@ -576,6 +591,7 @@ display:
                    count > 4 + i * 2 ? f[4 + i * 2].c_str() : "--.---");
         }
         draw_nav_hint();
+        draw_udp_badge();
         return;
       }
 
@@ -615,6 +631,7 @@ display:
           // No relative data yet: keep the clock readable.
           it.print(W / 2, H / 2 - 20, id(font_hero), Color(235, 235, 240), TextAlign::CENTER, clock_text.c_str());
           draw_nav_hint();
+          draw_udp_badge();
           return;
         }
 
@@ -670,6 +687,7 @@ display:
           it.line(4, y + row_h - 2, W - 4, y + row_h - 2, Color(40, 46, 58));
         }
         draw_nav_hint();
+        draw_udp_badge();
         return;
       }
 
@@ -729,6 +747,7 @@ display:
       }
 
       draw_nav_hint();
+      draw_udp_badge();
 
 # Quadrant navigation: bottom-left = previous page, bottom-right = next page.
 # A 24 px dead cross through the centre (12 px each side) keeps seam taps from
@@ -919,6 +938,10 @@ globals:
     restore_value: false
     initial_value: "0"
   - id: udp_rx_count
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  - id: udp_last_ms
     type: uint32_t
     restore_value: false
     initial_value: "0"

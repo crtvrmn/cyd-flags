@@ -24,7 +24,7 @@ namespace CydFlags
     [PluginName("CYD Flags")]
     public class CydFlagsPlugin : IPlugin, IDataPlugin, IWPFSettingsV2
     {
-        public const string Version = "0.7.8";
+        public const string Version = "0.7.9";
 
         public CydFlagsSettings Settings;
 
@@ -957,12 +957,19 @@ namespace CydFlags
         /// the fast path is unusable (e.g. a host name that does not resolve).</summary>
         private static bool SendRealtimeFlag(DeviceState state, FlagKind kind)
         {
-            return state.Udp.SendFlag(FlagModel.ToOption(kind)) || state.Client.SendFlag(kind);
+            // Flags are low-rate: send both transports so a blocked UDP port can
+            // never swallow a flag or a test flag again. The HTTP request also
+            // gives the plugin a real acknowledgement for diagnostics.
+            bool udp = state.Udp.SendFlag(FlagModel.ToOption(kind));
+            bool http = state.Client.SendFlag(kind);
+            return udp || http;
         }
 
         private static bool SendRealtimeGame(DeviceState state, string game)
         {
-            return state.Udp.SendGame(game) || state.Client.SendGame(game);
+            bool udp = state.Udp.SendGame(game);
+            bool http = state.Client.SendGame(game);
+            return udp || http;
         }
 
         private static bool SendRealtimeHeartbeat(DeviceState state, int counter)

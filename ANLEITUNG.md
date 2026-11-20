@@ -309,7 +309,7 @@ relativen Fahrer zu allen aktivierten Displays.
 | Display **weiß**, **Streifen** oder falsche Farben | Falscher Bildschirm-Chip. Eine der anderen beiden Dateien aus Abschnitt 1.1 flashen. |
 | Bild steht **auf dem Kopf** | Im Plugin unter **Display orientation** das andere Format wählen. Wenn es dann immer noch kopfüber ist, hilft nur eigene Firmware mit `display_rotation: "270"`. |
 | **NO WIFI** auf dem Display | Display ist nicht im WLAN. Router/SSID prüfen, näher stellen oder WLAN im Plugin neu speichern. **WIFI: SETUP AP** heißt: Einrichtungsmodus aktiv – mit `CYD Flags fallback` verbinden und `http://192.168.4.1` öffnen. |
-| **NO SIMHUB** auf dem Display | WLAN ist da, aber der Heartbeat kommt nicht an. Bei 0.7.5 konnte das passieren, wenn UDP blockiert war; **0.7.6** sendet den Heartbeat zusätzlich per HTTP. Plugin 0.7.8 und Firmware 0.7.7 aktualisieren, SimHub starten, im Plugin das Display auswählen und **Test connection** drücken; IP/Host prüfen. |
+| **NO SIMHUB** auf dem Display | WLAN ist da, aber der Heartbeat kommt nicht an. Bei 0.7.5 konnte das passieren, wenn UDP blockiert war; **0.7.6** sendet den Heartbeat zusätzlich per HTTP. Plugin 0.7.9 und Firmware 0.7.8 aktualisieren, SimHub starten, im Plugin das Display auswählen und **Test connection** drücken; IP/Host prüfen. |
 | Plugin erscheint **nicht** in SimHub | DLL liegt im falschen Ordner, SimHub nicht neu gestartet, oder Windows blockiert die DLL (Rechtsklick → Eigenschaften → „Zulassen“). |
 | Uhrzeit ist **falsch** | Display hat kein Internet (NTP) oder eine andere Zeitzone. In `firmware/cyd-flags.yaml` steht `timezone: Europe/Berlin`; für andere Länder anpassen. |
 | Uhrzeit zeigt **--:--** | Die Uhr hat noch keine Internetzeit bekommen. Warten oder Internet/router prüfen. |
@@ -321,7 +321,8 @@ relativen Fahrer zu allen aktivierten Displays.
 | **Touch reagiert links/rechts vertauscht** | Firmware 0.7.2 korrigiert die gespiegelte X-Achse des CYD-Touchcontrollers. Neue Factory-/OTA-Datei flashen. |
 | Racelogic-Sektoren bleiben **`--.---`** | Dein Spiel liefert keine aktuellen Sektorzeiten. Runde und Delta funktionieren trotzdem; die Sektoren füllen sich, sobald das Spiel sie meldet. |
 | Turm / Rev-Limiter aktualisiert **zu langsam** | Plugin und Firmware müssen beide 0.7.7 sein. Die Echtzeitdaten laufen über **UDP 18512**; prüfe, ob die Windows-Firewall UDP blockiert, und trage im Plugin besser die **IP** des Displays ein (nicht `cyd-flags.local`). Ohne UDP fällt das Plugin auf HTTP zurück und der Turm wird wieder träge. |
-| Welche Firmware läuft? | Beim Start zeigt das Display für 8 Sekunden **CYD FLAGS** und die Version (z. B. `v0.7.7`). Danach kommt der normale Bildschirm. |
+| Welche Firmware läuft? | Beim Start zeigt das Display für 8 Sekunden **CYD FLAGS** und die Version (z. B. `v0.7.8`). Danach kommt der normale Bildschirm. |
+| Display zeigt **UDP BLOCKED** | Das Display bekommt den HTTP-Heartbeat, aber keine UDP-Pakete. Turm/Rev laufen dann über den HTTP-Fallback (langsam). IP statt `cyd-flags.local` eintragen, UDP-Port 18512 prüfen, Windows-Firewall für `SimHubWPF.exe` erlauben. |
 | Plugin zeigt **UDP: blocked** | Die schnellen Daten kommen nicht am Display an (Firewall/Router/IP). Das Plugin fällt für den Link auf HTTP zurück; Turm und Rev bleiben langsam. IP statt `cyd-flags.local` eintragen, UDP 18512 im LAN erlauben. |
 | Alles geht, aber nach Router-Neustart nicht mehr | Die IP hat sich geändert. Neue IP auf dem Display ablesen und im Plugin eintragen. |
 
