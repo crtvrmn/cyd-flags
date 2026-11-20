@@ -18,6 +18,9 @@ Am Ende zeigt dein „Cheap Yellow Display“ (CYD):
   Rennens passiert nichts,
 - die IP-Adresse nur in den ersten 15 Sekunden nach dem Start.
 
+Du kannst **mehrere Displays** gleichzeitig betreiben. Sie zeigen alle dieselben
+Renndaten; Seitenauswahl, Helligkeit und WLAN richtest du pro Display ein.
+
 Wenn SimHub nicht läuft oder der PC aus ist, zeigt das Display weiterhin die
 Uhrzeit; als Untertitel steht dann **NO LINK**.
 
@@ -184,51 +187,71 @@ die DLL löschen und noch einmal kopieren.
 ### 2.5 Verbindung einstellen
 
 1. Klicke links auf **CYD Flags**.
-2. Setze den Haken bei **„Enable CYD Flags“**.
-3. Trage bei **„Host or IP“** die IP-Adresse ein, die das Display in den ersten
+2. Setze den Haken bei **„Enable CYD Flags (all displays)“**.
+3. Im Bereich **Displays** steht beim ersten Start bereits **Display 1**.
+   Wähle es im Auswahlfeld aus.
+4. Trage bei **„Host or IP“** die IP-Adresse ein, die das Display in den ersten
    15 Sekunden nach dem Start unten anzeigt, z. B. `192.168.1.42`.
-4. **Port** bleibt `80`.
-5. Klicke auf **„Test connection“**.
+5. **Port** bleibt `80`, setze den Haken bei **„Enable this display“**.
+6. Klicke auf **„Test connection (all displays)“**.
 
-Oben in den Einstellungen muss jetzt **LINK online** (grün) stehen.
+Oben in den Einstellungen muss jetzt **LINK online** (grün) stehen. Die
+Statuszeile bezieht sich immer auf das Display, das im Auswahlfeld ausgewählt
+ist.
+
+**Weiteres Display hinzufügen:** Klicke auf **„Add device“**, wähle den neuen
+Eintrag (**Display 2**) aus und trage dessen eigene IP-Adresse ein. Jedes Display
+bekommt dieselben Renndaten, aber eigene Seiten, Helligkeit und WLAN-Daten.
+**„Remove device“** löscht das ausgewählte Display; das letzte verbliebene
+Display kann nicht gelöscht werden.
+
+Bei einem Update von Version 0.6.0 werden die alten Einzel-Display-Einstellungen
+automatisch als **Display 1** übernommen – du musst nichts neu eintragen.
 
 Optional: Unter **Backlight** kannst du **„Turn backlight off (0%) while no
 game is running“** aktivieren. Dann wird das Display dunkel, sobald kein Spiel
-läuft, und beim Spielstart wieder auf den eingestellten Wert gedreht. Aktiviere
-das erst, wenn die Verbindung steht – im dunklen Zustand zeigt das Display
-seine IP nicht an.
+läuft, und beim Spielstart wieder auf den eingestellten Wert gedreht. Das gilt
+pro Display. Aktiviere es erst, wenn die Verbindung steht – im dunklen Zustand
+zeigt das Display seine IP nicht an.
 
 Wenn **offline** steht:
 
+- Ist das richtige Display im Auswahlfeld gewählt?
 - Ist das Display eingeschaltet und im selben WLAN wie der PC?
 - Stimmt die IP? Sie kann sich nach einem Router-Neustart ändern.
 - Funktioniert `http://<IP>` im Browser des PCs? Dann ist das Display erreichbar.
 - Firewall kurz testweise ausschalten (nur zum Testen).
 
+Ein nicht erreichbares Display blockiert die anderen nicht: Das Plugin versucht
+es weiter, die übrigen Displays werden normal aktualisiert.
+
 ### 2.6 Seiten auswählen, WLAN speichern, Flaggen testen
 
-Im Plugin gibt es dafür drei neue Bereiche:
+Diese Bereiche bearbeiten immer das im Auswahlfeld gewählte Display:
 
-- **Pages on the display:** Hake an, was das Display können soll:
+- **Pages on this display:** Hake an, was dieses Display können soll:
   **Flags**, **Clock**, **Relative tower** und **Race logic**. Was du abwählst,
   wird beim Tippen übersprungen. Wenn du alles abwählst, zeigt das Display
   **NO PAGE**. Flaggen haben weiterhin Vorrang.
-- **WiFi on the display:** Trage **SSID** und **Passwort** ein und klicke
-  **Save WiFi on display and connect**. Das Display speichert die Daten
+- **Race tower: show best lap instead of last lap:** pro Display wählbar, ob
+  der Turm **LAST** oder **BEST** anzeigt.
+- **WiFi on this display:** Trage **SSID** und **Passwort** ein und klicke
+  **Save WiFi on this display and connect**. Das Display speichert die Daten
   dauerhaft im ESP32 (NVS). Sie überleben also **OTA-Updates** und einen
   Neustart. Nur ein kompletter **Factory-Flash per USB** löscht sie wieder.
   Das Passwort wird **nicht** auf dem PC gespeichert.
-- **Test the flags:** Wähle eine Flagge und klicke **Show for 10 seconds**.
-  Das Display zeigt sie zehn Sekunden lang, auch ohne laufendes Spiel. Mit
-  **Stop test** geht es sofort zurück zu den normalen SimHub-Daten.
+- **Test the flags:** Wähle eine Flagge und klicke **Show on all displays for
+  10 seconds**. Alle aktivierten Displays zeigen sie zehn Sekunden lang, auch
+  ohne laufendes Spiel. Mit **Stop test** geht es sofort zurück zu den normalen
+  SimHub-Daten.
 
-**Open display web UI** öffnet die ESPHome-Seite des Displays direkt im
-Browser, damit du die IP nicht abtippen musst.
+**Open display web UI** öffnet die ESPHome-Seite des ausgewählten Displays
+direkt im Browser, damit du die IP nicht abtippen musst.
 
 ### 2.7 Fertig
 
 Starte dein Spiel. SimHub erkennt das Spiel, das Plugin schickt Flaggen und die
-relativen Fahrer zum Display.
+relativen Fahrer zu allen aktivierten Displays.
 
 - **Rennen:** Timing-Turm (vor dir, du, hinter dir) + kleine Uhr oben links.
   Der Abstand wird **grün**, wenn du näher kommst, und **rot**, wenn der
@@ -307,5 +330,5 @@ Die vollständige technische Doku steht in
 4. `http://192.168.4.1` öffnen → eigenes 2,4-GHz-WLAN einrichten.
 5. IP beim Start unten am Display ablesen (verschwindet nach 15 s).
 6. SimHub schließen → `dist/CydFlags.dll` in den SimHub-Ordner kopieren.
-7. SimHub starten → CYD Flags → Haken setzen → IP eintragen → Test connection.
+7. SimHub starten → CYD Flags → Haken setzen → Display auswählen → IP eintragen → Test connection.
 8. Spiel starten. Fertig.

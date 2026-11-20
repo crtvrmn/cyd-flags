@@ -1,31 +1,37 @@
-# CYD Flags — flags, clock and relative timing on a Cheap Yellow Display
+# CYD Flags — flags, clock and relative timing on Cheap Yellow Displays
 
 A two-part project that puts the current flag, a clock and a small relative
-timing tower from your sim racing game on a 2.8" **Cheap Yellow Display**
-(ESP32-2432S028R):
+timing tower from your sim racing game on one or more 2.8" **Cheap Yellow
+Displays** (ESP32-2432S028R):
 
 | part | what it is |
 |------|------------|
 | [`firmware/cyd-flags.yaml`](../firmware/cyd-flags.yaml) | ESPHome firmware: draws the flag/clock/timing screens and exposes a tiny HTTP API |
-| [`src/CydFlags/`](../src/CydFlags/) | SimHub plugin: reads flags and relative opponents, POSTs changes to the display |
+| [`src/CydFlags/`](../src/CydFlags/) | SimHub plugin: reads flags and relative opponents, POSTs changes to every enabled display |
 
 Outside a race session (menus, practice, qualifying) the display is a clock.
 In a real race session it shows the car ahead, your car and the car behind with
 position, driver name, gap and lap time — plus a small clock in the top-left.
-The header says **LAST** or **BEST** (selectable in the plugin) and turns into
-**LAST PIT** while you are in the pit lane.
+The header says **LAST** or **BEST** (selectable per display in the plugin) and
+turns into **LAST PIT** while you are in the pit lane.
 When a flag is active it still takes over the whole screen. There is no MQTT
-broker, no Home Assistant and no PC-side Python bridge. The display runs a web
+broker, no Home Assistant and no PC-side Python bridge. Each display runs a web
 server; SimHub talks to it directly over your LAN.
 
-Flag changes are **coalesced**: the panel redraws on a fixed 300 ms cadence
+All displays receive the same race data, but pages, backlight and WiFi are
+configured per display. A panel that is switched off, unplugged or on the wrong
+IP only backs off itself: the plugin keeps updating the other panels.
+
+Flag changes are **coalesced**: each panel redraws on a fixed 300 ms cadence
 instead of once per HTTP request, so a burst of yellow/blue/white changes cannot
 make the display queue up and lag behind. You always see the newest state, and
 intermediate flags that lasted only a few hundred milliseconds are skipped.
 
 ```
-game ──telemetry──► SimHub ──► CydFlags plugin ──HTTP POST──► ESP32 CYD
-                                   (only on change + heartbeat)
+                                    ┌──HTTP POST──► ESP32 CYD #1
+game ──telemetry──► SimHub ──► CydFlags plugin ──┼──HTTP POST──► ESP32 CYD #2
+                                    └──HTTP POST──► ESP32 CYD #3
+                                       (on change + heartbeat, per display)
 ```
 
 ---
@@ -180,37 +186,53 @@ settings panel is built in code (no XAML), so a plain C# compiler is enough.
 ### Configure it
 
 1. SimHub → **Settings → Plugins → CYD Flags**.
-2. Set **Host or IP** to `cyd-flags.local` or the display's IP address.
-3. Leave **Port** at `80`, tick **Enable CYD Flags**.
-4. Press **Test connection**. The status line should turn green and the CYD
+2. The **Displays** group lists every configured panel. A fresh installation
+   starts with one entry, **Display 1**. Upgrading from 0.6.0 migrates the old
+   single-display host, port, pages and brightness into that same entry, so the
+   first display keeps working unchanged.
+3. Pick an entry, set **Host or IP** to `cyd-flags.local` or the display's IP,
+   leave **Port** at `80`, and tick **Enable this display**.
+4. Press **Test connection**. The status line turns green and the selected CYD
    should show **NO FLAG** (or the current flag, if a game is running).
+5. Press **Add device** for each additional panel, then select the new entry and
+   give it its own host/IP. **Remove device** deletes the selected entry, but the
+   last remaining display cannot be removed.
 
-That is all: start a game and the flag appears.
+The status line and the SimHub properties follow the display selected in the
+dropdown, so **Last reply** and **error** describe that panel. The other panels
+keep running; an unreachable display only retries its own requests.
 
 ### Pages, WiFi and flag tests
 
-The same settings page has three more groups:
+The groups below the selector always edit the **selected display**:
 
-- **Pages on the display** — tick **Flags**, **Clock**, **Relative tower** and
-  **Race logic**. The plugin sends this list to the `features` entity. Disabled
-  pages disappear from the touch cycle; with nothing selected the CYD shows
-  **NO PAGE**. Flags keep priority over all pages.
-- **WiFi on the display** — enter the SSID and password and press **Save WiFi
-  on display and connect**. The plugin writes `wifi_ssid`/`wifi_password` and
-  presses the `wifi_connect` button, which calls ESPHome's `wifi.configure` with
-  `save: true`. Credentials are stored in the ESP32's NVS, so they survive OTA
-  updates and power cycles. A full USB/**factory** flash still erases NVS.
-  The password is never written to the plugin settings file.
-- **Test the flags** — choose a flag and press **Show for 10 seconds**. This
-  overrides the game for ten seconds (the panel brightens even if idle dimming
-  is active), then normal SimHub data resumes. **Stop test** ends it early.
+- **Pages on this display** — tick **Flags**, **Clock**, **Relative tower** and
+  **Race logic**. The plugin sends this list to that display's `features`
+  entity. Disabled pages disappear from its touch cycle; with nothing selected
+  the CYD shows **NO PAGE**. Flags keep priority over all pages. Timing data is
+  only sent to displays with the tower page enabled, race-logic data only to
+  displays with the logic page enabled, so switching a page off also saves
+  network traffic.
+- **Race tower: show best lap** — per-display choice between the `LAST` and
+  `BEST` lap columns. The plugin computes both variants and sends the selected
+  one.
+- **WiFi on this display** — enter the SSID and password and press **Save WiFi
+  on this display and connect**. The plugin writes `wifi_ssid`/`wifi_password`
+  to that panel and presses its `wifi_connect` button, which calls ESPHome's
+  `wifi.configure` with `save: true`. Credentials are stored in the ESP32's NVS,
+  so they survive OTA updates and power cycles. A full USB/**factory** flash
+  still erases NVS. The password is never written to the plugin settings file.
+- **Test the flags** — choose a flag and press **Show on all displays for 10
+  seconds**. This overrides the game for ten seconds on every enabled display
+  (the panels brighten even if idle dimming is active), then normal SimHub data
+  resumes. **Stop test** ends it early.
 
-**Open display web UI** launches the display's ESPHome page in the default
-browser, so you do not have to type the IP by hand.
+**Open display web UI** launches the selected display's ESPHome page in the
+default browser, so you do not have to type the IP by hand.
 
 ### Backlight and idle dimming
 
-The panel's backlight can be controlled from the same settings page:
+The panel's backlight can be controlled per display from the same settings page:
 
 - **Set display brightness from SimHub** pushes the slider value when the
   settings are applied.
@@ -219,10 +241,11 @@ The panel's backlight can be controlled from the same settings page:
   is running, and restores the slider value when a game starts. While the panel
   is off it cannot show its IP address, so finish the network setup first and
   only then enable this option.
-- **Push brightness now** forces one immediate push.
+- **Push brightness now** forces one immediate push to the selected display.
 
 The `brightness` entity is a normal ESPHome number: `0` turns the backlight
-off, `100` is full brightness.
+off, `100` is full brightness. Heartbeats and brightness are independent per
+display, so dimming one panel does not affect another.
 
 ---
 
@@ -373,6 +396,12 @@ The entity names (`flag`, `game`, `race`, `timing`, `logic`, `lap_label`,
 `brightness`) are matched **exactly** by ESPHome's web server. If you rename an
 entity, update the plugin (see `DeviceClient.cs`) and these URLs too.
 
+The plugin computes the shared race state once and sends a separate sequence of
+these POSTs to every enabled display. The `features` list, brightness and
+heartbeat are per display; timing is skipped when that display's tower page is
+off and race logic when its logic page is off. Each display also has its own
+connection backoff, so a timeout on one panel does not delay the others.
+
 ---
 
 ## Troubleshooting
@@ -380,6 +409,7 @@ entity, update the plugin (see `DeviceClient.cs`) and these URLs too.
 | symptom | cause / fix |
 |---------|-------------|
 | **NO LINK** on the display | PC cannot reach the CYD. Check host/IP in the plugin, ping the display, try the IP instead of `.local`. The plugin backs off briefly after failures but keeps retrying. |
+| Only **one of several** displays shows NO LINK | Select that display in the **Displays** dropdown and check its host/IP. The other displays keep updating; each panel has its own connection and backoff. A stale display entry can be removed with **Remove device**. |
 | Plugin status says **404** | Entity name mismatch. Only rename entities if you also change `DeviceClient.cs`; the default names are `flag`, `game`, `race`, `timing`, `logic`, `lap_label`, `features`, `wifi_ssid`, `wifi_password`, `wifi_connect`, `heartbeat`, `brightness`. |
 | **Page list / WiFi save does nothing** | The display is running an older firmware before 0.6.0. Flash the current factory/OTA image; the plugin then finds the `features` and `wifi_*` entities. |
 | **WiFi is gone after an update** | A **factory** USB flash erases NVS. Use the `.ota.bin` for wireless updates, or enter the credentials again with **Save WiFi on display**. |
@@ -410,7 +440,8 @@ bash tools/build/build-cydflags.sh
 firmware/cyd-flags.yaml          ESPHome firmware (display + REST entities)
 firmware/secrets.yaml.example    WiFi / OTA placeholders
 firmware/fonts/                  DejaVu Sans Condensed Bold + license
-src/CydFlags/CydFlagsPlugin.cs   SimHub plugin lifecycle + worker
+src/CydFlags/CydFlagsPlugin.cs   SimHub plugin lifecycle + per-display worker
+src/CydFlags/CydFlagsSettings.cs global and per-display settings + 0.6 migration
 src/CydFlags/FlagReader.cs       StatusDataBase flag reads (reflection fallback)
 src/CydFlags/FlagModel.cs        priority selection / name parsing (tested)
 src/CydFlags/TimingBuilder.cs    relative tower payload

@@ -53,8 +53,41 @@ namespace CydFlags
         {
             if (data == null) return string.Empty;
 
-            Opponent ahead = First(data.OpponentsAheadOnTrack);
-            Opponent behind = First(data.OpponentsBehindOnTrack);
+            Opponent ahead;
+            Opponent behind;
+            FindNeighbours(data, out ahead, out behind);
+
+            string aheadColor = ahead != null ? GapColor(ahead, true) : "-";
+            string behindColor = behind != null ? GapColor(behind, false) : "-";
+            return BuildRows(data, ahead, behind, aheadColor, behindColor, bestLapMode);
+        }
+
+        /// <summary>
+        /// Build the LAST and BEST variants from one frame. The gap trend is a
+        /// rate of change, so it is updated once and both variants share the
+        /// resulting colours; calling <see cref="Build"/> twice would advance
+        /// the history twice and rob the second payload of its trend colour.
+        /// </summary>
+        public static void BuildBoth(StatusDataBase data, out string lastPayload, out string bestPayload)
+        {
+            lastPayload = string.Empty;
+            bestPayload = string.Empty;
+            if (data == null) return;
+
+            Opponent ahead;
+            Opponent behind;
+            FindNeighbours(data, out ahead, out behind);
+
+            string aheadColor = ahead != null ? GapColor(ahead, true) : "-";
+            string behindColor = behind != null ? GapColor(behind, false) : "-";
+            lastPayload = BuildRows(data, ahead, behind, aheadColor, behindColor, false);
+            bestPayload = BuildRows(data, ahead, behind, aheadColor, behindColor, true);
+        }
+
+        private static void FindNeighbours(StatusDataBase data, out Opponent ahead, out Opponent behind)
+        {
+            ahead = First(data.OpponentsAheadOnTrack);
+            behind = First(data.OpponentsBehindOnTrack);
 
             // Some games do not fill the on-track lists; fall back to the
             // neighbouring overall positions so the tower is still useful.
@@ -62,13 +95,17 @@ namespace CydFlags
                 ahead = AtPosition(data.Opponents, data.Position - 1);
             if (behind == null && data.Position > 0)
                 behind = AtPosition(data.Opponents, data.Position + 1);
+        }
 
+        private static string BuildRows(StatusDataBase data, Opponent ahead, Opponent behind,
+            string aheadColor, string behindColor, bool bestLapMode)
+        {
             double playerLap = LapSeconds(data, bestLapMode);
             double best = BestLap(data, playerLap, bestLapMode);
 
-            string payload = Row(ahead, true, best, playerLap, bestLapMode)
+            string payload = Row(ahead, true, best, playerLap, bestLapMode, aheadColor)
                 + ";" + PlayerRow(data, playerLap, best)
-                + ";" + Row(behind, false, best, playerLap, bestLapMode);
+                + ";" + Row(behind, false, best, playerLap, bestLapMode, behindColor);
             if (payload.Length > 250) payload = payload.Substring(0, 250);
             return payload;
         }
@@ -100,8 +137,19 @@ namespace CydFlags
             return null;
         }
 
+        private static string GapColor(Opponent opponent, bool isAhead)
+        {
+            object gap = opponent.RelativeGapToPlayer;
+            double gapSeconds;
+            if (!TrySeconds(gap, out gapSeconds) || Math.Abs(gapSeconds) < 0.0005)
+                gap = opponent.GaptoPlayer;
+
+            if (!TrySeconds(gap, out gapSeconds)) return "-";
+            return GapCode(opponent, Math.Abs(gapSeconds), isAhead);
+        }
+
         private static string Row(Opponent opponent, bool isAhead, double bestLap,
-            double playerLap, bool bestLapMode)
+            double playerLap, bool bestLapMode, string gapColor)
         {
             if (opponent == null)
                 return "0~---~---~-~--:--.---~-";
@@ -120,7 +168,7 @@ namespace CydFlags
                 opponent.Position.ToString(Inv),
                 Clean(opponent.Name),
                 FormatGap(gap),
-                gapValid ? GapCode(opponent, gapSeconds, isAhead) : "-",
+                gapValid ? gapColor : "-",
                 FormatLap(lap),
                 TimeCode(lap, bestLap, playerLap, false)
             });

@@ -11,7 +11,7 @@ namespace CydFlags
     /// </summary>
     internal sealed class DeviceClient
     {
-        private readonly Func<CydFlagsSettings> _settings;
+        private readonly Func<CydFlagsDeviceSettings> _settings;
         private readonly object _lock = new object();
 
         private bool _reachable;
@@ -26,7 +26,7 @@ namespace CydFlags
             ServicePointManager.Expect100Continue = false;
         }
 
-        public DeviceClient(Func<CydFlagsSettings> settings)
+        public DeviceClient(Func<CydFlagsDeviceSettings> settings)
         {
             _settings = settings;
         }
@@ -210,8 +210,8 @@ namespace CydFlags
 
         private string BuildUrl(string relative)
         {
-            CydFlagsSettings settings = _settings != null ? _settings() : null;
-            if (settings == null) throw new InvalidOperationException("settings unavailable");
+            CydFlagsDeviceSettings settings = _settings != null ? _settings() : null;
+            if (settings == null) throw new InvalidOperationException("device settings unavailable");
 
             string host = (settings.Host ?? string.Empty).Trim();
             if (host.Length == 0) throw new InvalidOperationException("device host is empty");
