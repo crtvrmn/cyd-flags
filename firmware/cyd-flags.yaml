@@ -124,7 +124,8 @@ display:
 
       const bool link = id(link_seen) && (millis() - id(link_last_ms) < 5000);
       const std::string flag = id(flag_state);
-      const bool checkered = link && flag == "CHECKERED";
+      const bool flag_active = id(feat_flags) && link && flag != "NONE";
+      const bool checkered = flag_active && flag == "CHECKERED";
 
       auto now = id(wall_clock).now();
       std::string clock_text = "--:--";
@@ -140,19 +141,26 @@ display:
       // clock. Color codes: -=none, G=green, R=red, P=purple.
       const std::string timing = id(timing_raw);
       const std::string logic_text = id(logic).state;
-      const bool flag_active = link && flag != "NONE";
       // A flag still takes over the whole screen. While a race is running a
-      // tap cycles through tower -> race logic -> clock.
-      const bool race_session = id(race_mode) && !timing.empty() && !flag_active;
-      const int view = id(race_view);
-      const bool race = race_session && view == 0;
-      const bool logic_page = race_session && view == 1 && !logic_text.empty();
+      // tap cycles through the enabled race pages.
+      const bool race_session = id(race_mode) && !flag_active
+                                && (!timing.empty() || !logic_text.empty());
+      int view = id(race_view);
+      if (view == 0 && !id(feat_tower)) view = id(feat_logic) ? 1 : 2;
+      if (view == 1 && !id(feat_logic)) view = id(feat_clock) ? 2 : 0;
+      if (view == 2 && !id(feat_clock)) view = id(feat_tower) ? 0 : 1;
+      if (view == 0 && !id(feat_tower)) view = 2;
+      if (view == 1 && !id(feat_logic)) view = 2;
+
+      const bool race = race_session && view == 0 && id(feat_tower) && !timing.empty();
+      const bool logic_page = race_session && view == 1 && id(feat_logic) && !logic_text.empty();
+      const bool clock_page = race_session && view == 2 && id(feat_clock);
 
       Color bg = Color(12, 14, 20);
       Color fg = Color(235, 235, 240);
 
       if (!race && !logic_page) {
-        if (!link) {
+        if (!flag_active) {
           bg = Color(12, 14, 20);
           fg = Color(235, 235, 240);
         } else if (flag == "GREEN") {
@@ -175,6 +183,14 @@ display:
       }
 
       it.fill(bg);
+
+      // Nothing enabled for this state (e.g. flags-only and no flag): say so
+      // instead of leaving a confusing clock that the user disabled.
+      if (!race && !logic_page && !flag_active && !id(feat_clock) && !clock_page) {
+        it.print(W / 2, H / 2, id(font_sub), Color(130, 135, 145), TextAlign::CENTER,
+                 link ? "NO PAGE" : "NO LINK");
+        return;
+      }
 
       // Checkered pattern: 20 px squares, exactly fills both orientations.
       if (checkered) {
@@ -339,8 +355,8 @@ display:
       // Clock / flag screen. Flag names keep priority over the clock.
       std::string title = clock_text;
       std::string sub = date_text;
-      if (!link) {
-        sub = "NO LINK";
+      if (!flag_active) {
+        if (!link) sub = "NO LINK";
       } else if (flag == "GREEN") {
         title = "GREEN"; sub = "TRACK CLEAR";
       } else if (flag == "YELLOW") {
@@ -359,7 +375,7 @@ display:
         title = "ORANGE"; sub = "MEATBALL - DAMAGE";
       }
 
-      const bool clock_screen = !link || flag == "NONE";
+      const bool clock_screen = !flag_active;
       const Color hero_color = link ? fg : Color(255, 185, 70);
       const Color sub_color = link ? fg : Color(210, 170, 90);
       const int hero_y = portrait ? 152 : (checkered ? 104 : 112);
@@ -389,8 +405,16 @@ touchscreen:
       y_max: 4095
     on_touch:
       - lambda: |-
-          if (id(race_mode) && !id(timing_raw).empty() && id(flag_state) == "NONE") {
-            id(race_view) = (id(race_view) + 1) % 3;
+          const bool blocked_by_flag = id(feat_flags) && id(flag_state) != "NONE";
+          if (id(race_mode) && !blocked_by_flag
+              && (!id(timing_raw).empty() || !id(logic).state.empty())) {
+            int next = id(race_view);
+            for (int i = 0; i < 3; i++) {
+              next = (next + 1) % 3;
+              if ((next == 0 && id(feat_tower)) || (next == 1 && id(feat_logic)) || (next == 2 && id(feat_clock)))
+                break;
+            }
+            id(race_view) = next;
           }
 font:
   - file: "fonts/DejaVuSansCondensed-Bold.ttf"
@@ -473,6 +497,27 @@ globals:
     type: int
     restore_value: false
     initial_value: "0"
+  # Pages/features enabled from the SimHub plugin. "none" disables all pages.
+  - id: feature_list
+    type: std::string
+    restore_value: true
+    initial_value: '"flags,clock,tower,logic"'
+  - id: feat_flags
+    type: bool
+    restore_value: false
+    initial_value: "true"
+  - id: feat_clock
+    type: bool
+    restore_value: false
+    initial_value: "true"
+  - id: feat_tower
+    type: bool
+    restore_value: false
+    initial_value: "true"
+  - id: feat_logic
+    type: bool
+    restore_value: false
+    initial_value: "true"
 
 select:
   - platform: template
@@ -495,6 +540,23 @@ select:
           id(flag_state) = x;
 
 text:
+  # WiFi provisioning: the plugin writes SSID/password here and presses the
+  # wifi_connect button. save: true stores them in the ESP32 NVS, so they
+  # survive OTA updates and power cycles. A full USB/factory flash erases NVS.
+  - platform: template
+    name: wifi_ssid
+    id: wifi_ssid
+    optimistic: true
+    mode: text
+    min_length: 0
+    max_length: 32
+  - platform: template
+    name: wifi_password
+    id: wifi_password
+    optimistic: true
+    mode: password
+    min_length: 0
+    max_length: 64
   - platform: template
     name: game
     id: game
@@ -540,6 +602,38 @@ text:
     mode: text
     min_length: 0
     max_length: 8
+  # Comma-separated page list sent by the plugin: flags,clock,tower,logic.
+  # An empty value means "all pages" for compatibility; "none" hides all.
+  - platform: template
+    name: features
+    id: features
+    optimistic: true
+    mode: text
+    min_length: 0
+    max_length: 64
+    initial_value: "flags,clock,tower,logic"
+    restore_value: true
+    on_value:
+      - lambda: |-
+          id(feature_list) = x;
+          id(feat_flags) = x.empty() || x.find("flags") != std::string::npos;
+          id(feat_clock) = x.empty() || x.find("clock") != std::string::npos;
+          id(feat_tower) = x.empty() || x.find("tower") != std::string::npos;
+          id(feat_logic) = x.empty() || x.find("logic") != std::string::npos;
+          if (!id(feat_tower) && id(race_view) == 0) id(race_view) = id(feat_logic) ? 1 : 2;
+          if (!id(feat_logic) && id(race_view) == 1) id(race_view) = id(feat_clock) ? 2 : 0;
+          if (!id(feat_clock) && id(race_view) == 2) id(race_view) = id(feat_tower) ? 0 : 1;
+
+button:
+  - platform: template
+    name: wifi_connect
+    id: wifi_connect
+    on_press:
+      - wifi.configure:
+          ssid: !lambda 'return id(wifi_ssid).state;'
+          password: !lambda 'return id(wifi_password).state;'
+          save: true
+          timeout: 30s
 
 number:
   # Backlight brightness, 0..100 %. The panel is on by default after boot.

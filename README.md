@@ -55,6 +55,17 @@ game ──telemetry──► SimHub ──► CydFlags plugin ──HTTP POST�
 The German guide has screenshots-free, click-by-click instructions, including
 troubleshooting: [ANLEITUNG.md](ANLEITUNG.md).
 
+From the plugin you can also:
+
+- **Choose pages** — flags only, clock only, tower, race logic, or any
+  combination. Disabled pages disappear from the touch cycle and the ESP stores
+  the choice.
+- **Open the display web UI** with one click.
+- **Store WiFi on the display** — written to the ESP's NVS with
+  `wifi.configure save: true`, so it survives OTA updates and reboots. A full
+  factory flash still erases it.
+- **Test every flag for 10 seconds** without starting a game.
+
 ---
 
 ## Prebuilt firmware

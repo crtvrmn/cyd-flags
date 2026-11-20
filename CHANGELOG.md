@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0
+
+* Plugin **Pages on the display** checkboxes (flags, clock, tower, race logic);
+  the firmware persists the list and the touch cycle skips disabled pages.
+* **Open display web UI** button in the plugin.
+* **Save WiFi on display**: the plugin writes `wifi_ssid`/`wifi_password` and
+  presses the firmware's `wifi_connect` button (`wifi.configure`, `save: true`).
+  Credentials live in NVS and survive OTA updates and reboots.
+* **Test the flags**: show any flag for 10 seconds from the plugin without a
+  running game, then resume normal data.
+* Plugin and firmware now expose `features`, `wifi_ssid`, `wifi_password` and
+  `wifi_connect` entities.
+
 ## 0.5.0
 
 * Added the **RACELOGIC** page: current lap, sector times with green/red

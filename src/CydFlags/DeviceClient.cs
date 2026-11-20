@@ -78,6 +78,26 @@ namespace CydFlags
             return Post("text/logic/set?value=" + Uri.EscapeDataString(payload ?? string.Empty));
         }
 
+        public bool SendFeatures(string features)
+        {
+            return Post("text/features/set?value=" + Uri.EscapeDataString(features ?? string.Empty));
+        }
+
+        public bool SendWifiSsid(string ssid)
+        {
+            return Post("text/wifi_ssid/set?value=" + Uri.EscapeDataString(ssid ?? string.Empty));
+        }
+
+        public bool SendWifiPassword(string password)
+        {
+            return Post("text/wifi_password/set?value=" + Uri.EscapeDataString(password ?? string.Empty));
+        }
+
+        public bool SendWifiConnect()
+        {
+            return Post("button/wifi_connect/press");
+        }
+
         public bool SendHeartbeat(int counter)
         {
             return Post("number/heartbeat/set?value=" + counter.ToString());

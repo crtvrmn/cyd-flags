@@ -187,6 +187,27 @@ settings panel is built in code (no XAML), so a plain C# compiler is enough.
 
 That is all: start a game and the flag appears.
 
+### Pages, WiFi and flag tests
+
+The same settings page has three more groups:
+
+- **Pages on the display** — tick **Flags**, **Clock**, **Relative tower** and
+  **Race logic**. The plugin sends this list to the `features` entity. Disabled
+  pages disappear from the touch cycle; with nothing selected the CYD shows
+  **NO PAGE**. Flags keep priority over all pages.
+- **WiFi on the display** — enter the SSID and password and press **Save WiFi
+  on display and connect**. The plugin writes `wifi_ssid`/`wifi_password` and
+  presses the `wifi_connect` button, which calls ESPHome's `wifi.configure` with
+  `save: true`. Credentials are stored in the ESP32's NVS, so they survive OTA
+  updates and power cycles. A full USB/**factory** flash still erases NVS.
+  The password is never written to the plugin settings file.
+- **Test the flags** — choose a flag and press **Show for 10 seconds**. This
+  overrides the game for ten seconds (the panel brightens even if idle dimming
+  is active), then normal SimHub data resumes. **Stop test** ends it early.
+
+**Open display web UI** launches the display's ESPHome page in the default
+browser, so you do not have to type the IP by hand.
+
 ### Backlight and idle dimming
 
 The panel's backlight can be controlled from the same settings page:
@@ -328,6 +349,15 @@ curl -X POST 'http://cyd-flags.local/text/timing/set?value=6~Fabio~0.45~G~1:47.3
 # Sector colors compare with your best lap: G faster, R slower.
 curl -X POST 'http://cyd-flags.local/text/logic/set?value=1:23.456~-~-0.234~G~31.234~G~35.100~R~--.---~-'
 
+# pages: comma-separated flags,clock,tower,logic; "none" hides all pages
+curl -X POST 'http://cyd-flags.local/text/features/set?value=flags,clock,tower,logic'
+
+# WiFi provisioning: write credentials, then press the button. save:true puts
+# them in NVS; they survive OTA/reboot but not a full factory flash.
+curl -X POST 'http://cyd-flags.local/text/wifi_ssid/set?value=MyNetwork'
+curl -X POST 'http://cyd-flags.local/text/wifi_password/set?value=secret'
+curl -X POST 'http://cyd-flags.local/button/wifi_connect/press'
+
 # heartbeat: any number; the display considers the link alive for 5 s
 curl -X POST 'http://cyd-flags.local/number/heartbeat/set?value=42'
 
@@ -339,9 +369,9 @@ Read state with `GET /select/flag`, `GET /text/game`, etc. ESPHome only accepts
 **POST** for the `set` action.
 
 The entity names (`flag`, `game`, `race`, `timing`, `logic`, `lap_label`,
-`heartbeat`, `brightness`) are matched **exactly** by ESPHome's web server. If
-you rename an entity, update the plugin (see `DeviceClient.cs`) and these URLs
-too.
+`features`, `wifi_ssid`, `wifi_password`, `wifi_connect`, `heartbeat`,
+`brightness`) are matched **exactly** by ESPHome's web server. If you rename an
+entity, update the plugin (see `DeviceClient.cs`) and these URLs too.
 
 ---
 
@@ -350,7 +380,9 @@ too.
 | symptom | cause / fix |
 |---------|-------------|
 | **NO LINK** on the display | PC cannot reach the CYD. Check host/IP in the plugin, ping the display, try the IP instead of `.local`. The plugin backs off briefly after failures but keeps retrying. |
-| Plugin status says **404** | Entity name mismatch. Only rename entities if you also change `DeviceClient.cs`; the default names are `flag`, `game`, `race`, `timing`, `logic`, `lap_label`, `heartbeat`, `brightness`. |
+| Plugin status says **404** | Entity name mismatch. Only rename entities if you also change `DeviceClient.cs`; the default names are `flag`, `game`, `race`, `timing`, `logic`, `lap_label`, `features`, `wifi_ssid`, `wifi_password`, `wifi_connect`, `heartbeat`, `brightness`. |
+| **Page list / WiFi save does nothing** | The display is running an older firmware before 0.6.0. Flash the current factory/OTA image; the plugin then finds the `features` and `wifi_*` entities. |
+| **WiFi is gone after an update** | A **factory** USB flash erases NVS. Use the `.ota.bin` for wireless updates, or enter the credentials again with **Save WiFi on display**. |
 | Race-logic sectors stay `--.---` | The game does not expose current sector times for the player. The page still shows lap and delta; sectors fill in as the game reports them. |
 | Display stays **blank** | Wrong `display_model` for your board, or backlight not on. Check the USB cable is data-capable and the board variant table above. |
 | Image **upside down** | `display_rotation: "270"`. |

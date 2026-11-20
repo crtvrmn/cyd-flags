@@ -205,7 +205,27 @@ Wenn **offline** steht:
 - Funktioniert `http://<IP>` im Browser des PCs? Dann ist das Display erreichbar.
 - Firewall kurz testweise ausschalten (nur zum Testen).
 
-### 2.6 Fertig
+### 2.6 Seiten auswählen, WLAN speichern, Flaggen testen
+
+Im Plugin gibt es dafür drei neue Bereiche:
+
+- **Pages on the display:** Hake an, was das Display können soll:
+  **Flags**, **Clock**, **Relative tower** und **Race logic**. Was du abwählst,
+  wird beim Tippen übersprungen. Wenn du alles abwählst, zeigt das Display
+  **NO PAGE**. Flaggen haben weiterhin Vorrang.
+- **WiFi on the display:** Trage **SSID** und **Passwort** ein und klicke
+  **Save WiFi on display and connect**. Das Display speichert die Daten
+  dauerhaft im ESP32 (NVS). Sie überleben also **OTA-Updates** und einen
+  Neustart. Nur ein kompletter **Factory-Flash per USB** löscht sie wieder.
+  Das Passwort wird **nicht** auf dem PC gespeichert.
+- **Test the flags:** Wähle eine Flagge und klicke **Show for 10 seconds**.
+  Das Display zeigt sie zehn Sekunden lang, auch ohne laufendes Spiel. Mit
+  **Stop test** geht es sofort zurück zu den normalen SimHub-Daten.
+
+**Open display web UI** öffnet die ESPHome-Seite des Displays direkt im
+Browser, damit du die IP nicht abtippen musst.
+
+### 2.7 Fertig
 
 Starte dein Spiel. SimHub erkennt das Spiel, das Plugin schickt Flaggen und die
 relativen Fahrer zum Display.

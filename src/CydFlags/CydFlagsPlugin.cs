@@ -16,7 +16,7 @@ namespace CydFlags
     [PluginName("CYD Flags")]
     public class CydFlagsPlugin : IPlugin, IDataPlugin, IWPFSettingsV2
     {
-        public const string Version = "0.5.0";
+        public const string Version = "0.6.0";
 
         public CydFlagsSettings Settings;
 
@@ -47,6 +47,7 @@ namespace CydFlags
         private string _lastSentTiming;
         private string _lastSentLogic;
         private string _lastSentLapLabel;
+        private string _lastSentFeatures;
         private string _lastHostKey;
         private DateTime _lastFlagSentUtc;
         private DateTime _lastGameSentUtc;
@@ -55,6 +56,7 @@ namespace CydFlags
         private DateTime _lastTimingSentUtc;
         private DateTime _lastLogicSentUtc;
         private DateTime _lastLapLabelSentUtc;
+        private DateTime _lastFeaturesSentUtc;
         private DateTime _backoffUntilUtc;
         private int _heartbeatCounter;
         private bool _brightnessDirty;
@@ -64,6 +66,11 @@ namespace CydFlags
         private static readonly DateTime NoTiming = DateTime.MinValue;
         private DateTime _lastTimingBuildUtc = NoTiming;
         private DateTime _lastLogicBuildUtc = NoTiming;
+
+        // "Test flags" override: while set, DataUpdate ignores the game and
+        // reports this flag so the user can check the panel without driving.
+        private FlagKind _testFlag = FlagKind.None;
+        private DateTime _testUntilUtc = DateTime.MinValue;
 
         // Log throttling.
         private string _lastLoggedError;
@@ -140,6 +147,25 @@ namespace CydFlags
                     return;
                 }
 
+                bool testActive;
+                FlagKind testFlag;
+                lock (_stateLock)
+                {
+                    testActive = _testUntilUtc > DateTime.UtcNow;
+                    testFlag = _testFlag;
+                }
+                if (testActive)
+                {
+                    // Treat a test as "game running" so the idle dim does not
+                    // black out the panel while the user is checking flags.
+                    SetGameRunning(true);
+                    SetState(testFlag, string.Empty, false, string.Empty, string.Empty, "LAST");
+                    _lastTimingBuildUtc = NoTiming;
+                    _lastLogicBuildUtc = NoTiming;
+                    TimingBuilder.ResetTrend();
+                    return;
+                }
+
                 if (!data.GameRunning || data.NewData == null)
                 {
                     SetGameRunning(false);
@@ -152,33 +178,48 @@ namespace CydFlags
 
                 SetGameRunning(true);
 
-                FlagKind kind = FlagReader.ReadKind(data.NewData);
+                FlagKind kind = Settings.PageFlags ? FlagReader.ReadKind(data.NewData) : FlagKind.None;
                 string game = data.GameName ?? string.Empty;
 
-                bool race = TimingBuilder.IsRaceSession(data.NewData);
+                bool race = (Settings.PageTower || Settings.PageLogic)
+                            && TimingBuilder.IsRaceSession(data.NewData);
                 string timing = string.Empty;
                 string logic = string.Empty;
                 if (race)
                 {
                     DateTime now = DateTime.UtcNow;
-                    if ((now - _lastTimingBuildUtc).TotalMilliseconds >= 400)
+                    if (Settings.PageTower)
                     {
-                        timing = TimingBuilder.Build(data.NewData, Settings.ShowBestLap);
-                        _lastTimingBuildUtc = now;
+                        if ((now - _lastTimingBuildUtc).TotalMilliseconds >= 400)
+                        {
+                            timing = TimingBuilder.Build(data.NewData, Settings.ShowBestLap);
+                            _lastTimingBuildUtc = now;
+                        }
+                        else
+                        {
+                            lock (_stateLock) timing = _timing;
+                        }
                     }
                     else
                     {
-                        lock (_stateLock) timing = _timing;
+                        _lastTimingBuildUtc = NoTiming;
                     }
 
-                    if ((now - _lastLogicBuildUtc).TotalMilliseconds >= 400)
+                    if (Settings.PageLogic)
                     {
-                        logic = RaceLogicBuilder.Build(data.NewData);
-                        _lastLogicBuildUtc = now;
+                        if ((now - _lastLogicBuildUtc).TotalMilliseconds >= 400)
+                        {
+                            logic = RaceLogicBuilder.Build(data.NewData);
+                            _lastLogicBuildUtc = now;
+                        }
+                        else
+                        {
+                            lock (_stateLock) logic = _logic;
+                        }
                     }
                     else
                     {
-                        lock (_stateLock) logic = _logic;
+                        _lastLogicBuildUtc = NoTiming;
                     }
                 }
                 else
@@ -262,6 +303,7 @@ namespace CydFlags
             _lastSentRaceMode = null;
             _lastSentTiming = null;
             _lastSentLogic = null;
+            _lastSentFeatures = null;
             _lastSentBrightness = -1;
             _lastHeartbeatUtc = DateTime.MinValue;
             _backoffUntilUtc = DateTime.MinValue;
@@ -277,10 +319,57 @@ namespace CydFlags
             if (_wake != null) _wake.Set();
         }
 
+        /// <summary>Start showing a test flag for a few seconds, ignoring the
+        /// game. Used by the settings panel to verify the display.</summary>
+        public void ShowTestFlag(FlagKind kind, int seconds)
+        {
+            if (seconds < 1) seconds = 1;
+            if (seconds > 60) seconds = 60;
+            lock (_stateLock)
+            {
+                _testFlag = kind;
+                _testUntilUtc = DateTime.UtcNow.AddSeconds(seconds);
+            }
+            if (_wake != null) _wake.Set();
+        }
+
+        public void ClearTestFlag()
+        {
+            lock (_stateLock) _testUntilUtc = DateTime.MinValue;
+            if (_wake != null) _wake.Set();
+        }
+
+        /// <summary>Write WiFi credentials into the ESP's NVS and connect.
+        /// Returns an empty string on success, otherwise a user-facing error.
+        /// A full USB/factory flash erases NVS again; OTA and reboots keep it.</summary>
+        public string SaveWifiToDisplay(string ssid, string password)
+        {
+            if (_client == null) return "Plugin is not initialised yet.";
+            if (string.IsNullOrWhiteSpace(ssid)) return "SSID must not be empty.";
+
+            string cleanSsid = ssid.Trim();
+            if (!_client.SendWifiSsid(cleanSsid))
+                return "SSID: " + (_client.LastError ?? "request failed");
+            if (!_client.SendWifiPassword(password ?? string.Empty))
+                return "Password: " + (_client.LastError ?? "request failed");
+            if (!_client.SendWifiConnect())
+                return "Connect: " + (_client.LastError ?? "request failed");
+
+            Settings.WifiSsid = cleanSsid;
+            ApplySettings();
+            SyncStatus(DateTime.UtcNow);
+            return string.Empty;
+        }
+
         public string DescribeTarget()
         {
             if (Settings == null) return "-";
             return "http://" + Settings.Host + ":" + Settings.Port;
+        }
+
+        public string DeviceWebUrl
+        {
+            get { return DescribeTarget() + "/"; }
         }
 
         // ------------------------------------------------------------------
@@ -321,12 +410,14 @@ namespace CydFlags
                 _lastSentTiming = null;
                 _lastSentLogic = null;
                 _lastSentLapLabel = null;
+                _lastSentFeatures = null;
                 _lastSentBrightness = -1;
                 _lastHeartbeatUtc = DateTime.MinValue;
                 _lastRaceModeSentUtc = DateTime.MinValue;
                 _lastTimingSentUtc = DateTime.MinValue;
                 _lastLogicSentUtc = DateTime.MinValue;
                 _lastLapLabelSentUtc = DateTime.MinValue;
+                _lastFeaturesSentUtc = DateTime.MinValue;
                 _backoffUntilUtc = DateTime.MinValue;
                 if (_client != null) _client.ResetStatus();
                 _brightnessDirty = settings.ApplyBrightness || settings.DimWhenNoGame;
@@ -363,6 +454,19 @@ namespace CydFlags
 
             string option = FlagModel.ToOption(flag);
             string safeGame = SanitizeGame(game);
+
+            // Page feature list. Sent first so a freshly booted display hides
+            // pages before the first flag/game payload arrives.
+            string features = settings.FeatureString();
+            bool featuresDue = features != _lastSentFeatures
+                || (now - _lastFeaturesSentUtc).TotalSeconds >= 10;
+            if (featuresDue)
+            {
+                if (!_client.SendFeatures(features)) { Fail(now); return; }
+                _lastSentFeatures = features;
+                _lastFeaturesSentUtc = now;
+                LogRequest("features " + features);
+            }
 
             if (option != _lastSentFlag
                 && (now - _lastFlagSentUtc).TotalMilliseconds >= settings.MinSendIntervalMs)
@@ -405,7 +509,7 @@ namespace CydFlags
                 LogRequest("lap label " + lapLabel);
             }
 
-            if (race)
+            if (race && settings.PageTower)
             {
                 bool timingDue = timing != _lastSentTiming
                     || (now - _lastTimingSentUtc).TotalSeconds >= 5;
@@ -419,14 +523,14 @@ namespace CydFlags
             }
             else if (_lastSentTiming != null)
             {
-                // Clear the tower payload when leaving the race, so the next
-                // race cannot flash a stale row before fresh data arrives.
+                // Clear the tower payload when leaving the race or when the
+                // tower page is disabled, so no stale rows can appear later.
                 if (!_client.SendTiming(string.Empty)) { Fail(now); return; }
                 _lastSentTiming = null;
                 LogRequest("timing cleared");
             }
 
-            if (race)
+            if (race && settings.PageLogic)
             {
                 bool logicDue = logic != _lastSentLogic
                     || (now - _lastLogicSentUtc).TotalSeconds >= 5;

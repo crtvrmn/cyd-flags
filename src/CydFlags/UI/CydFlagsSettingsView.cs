@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -31,6 +32,18 @@ namespace CydFlags.UI
         private CheckBox _dimWhenNoGame;
         private Slider _brightness;
         private CheckBox _logRequests;
+
+        private CheckBox _pageFlags;
+        private CheckBox _pageClock;
+        private CheckBox _pageTower;
+        private CheckBox _pageLogic;
+
+        private TextBox _wifiSsid;
+        private PasswordBox _wifiPassword;
+        private TextBlock _wifiStatus;
+
+        private ComboBox _testFlag;
+        private TextBlock _testStatus;
 
         private bool _dirty;
         private DateTime _lastApplyUtc;
@@ -68,7 +81,8 @@ namespace CydFlags.UI
                        "cyd-flags ESPHome firmware. SimHub pushes one HTTP POST per change to the display's " +
                        "built-in web server - no MQTT and no Home Assistant needed.\n\n" +
                        "The display must be reachable by name (e.g. cyd-flags.local) or by IP address. " +
-                       "Firmware entity ids: flag, game, race, timing, lap_label, heartbeat, brightness.",
+                       "Firmware entity ids: flag, game, race, timing, lap_label, logic, features, " +
+                       "wifi_ssid, wifi_password, wifi_connect, heartbeat, brightness.",
                 TextWrapping = TextWrapping.Wrap,
                 MaxWidth = 660,
                 Margin = new Thickness(0, 0, 0, 8)
@@ -104,6 +118,38 @@ namespace CydFlags.UI
                     if (int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out port))
                         Settings.Port = port;
                 }, 70);
+
+            Button open = AddButton(root, "Open display web UI");
+            open.Click += (s, e) =>
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo(_plugin.DeviceWebUrl) { UseShellExecute = true });
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Could not open the display web UI:\n" + ex.Message,
+                        "CYD Flags", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            };
+
+            // ---------------- pages ---------------------------------------
+            AddSection(root, "Pages on the display");
+            _pageFlags = AddCheck(root, "Flags", () => Settings.PageFlags, v => Settings.PageFlags = v);
+            _pageClock = AddCheck(root, "Clock", () => Settings.PageClock, v => Settings.PageClock = v);
+            _pageTower = AddCheck(root, "Relative tower (ahead/behind)", () => Settings.PageTower, v => Settings.PageTower = v);
+            _pageLogic = AddCheck(root, "Race logic (current lap, sectors, delta)", () => Settings.PageLogic, v => Settings.PageLogic = v);
+
+            root.Children.Add(new TextBlock
+            {
+                Text = "The plugin sends this list to the display. Disabled pages are skipped by the touch cycle; " +
+                       "with no page enabled the display shows NO PAGE. Flags still keep priority over the other pages.",
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 620,
+                FontSize = 11,
+                Opacity = 0.75,
+                Margin = new Thickness(0, 2, 0, 4)
+            });
 
             // ---------------- traffic -------------------------------------
             AddSection(root, "Traffic");
@@ -155,6 +201,82 @@ namespace CydFlags.UI
                 _plugin.ApplyBrightnessNow();
                 RefreshStatus();
             };
+
+            // ---------------- WiFi provisioning ---------------------------
+            AddSection(root, "WiFi on the display");
+            _wifiSsid = AddText(root, "Network name (SSID)", () => Settings.WifiSsid,
+                v => Settings.WifiSsid = v ?? string.Empty, 300);
+            _wifiPassword = AddPassword(root, "Password", 300);
+
+            Button saveWifi = AddButton(root, "Save WiFi on display and connect");
+            saveWifi.Click += (s, e) =>
+            {
+                Apply();
+                string error = _plugin.SaveWifiToDisplay(_wifiSsid.Text, _wifiPassword.Password);
+                if (_wifiStatus != null)
+                {
+                    _wifiStatus.Text = string.IsNullOrEmpty(error)
+                        ? "Credentials written to the display. It should connect within a few seconds."
+                        : error;
+                    _wifiStatus.Foreground = new SolidColorBrush(string.IsNullOrEmpty(error)
+                        ? Color.FromRgb(0x33, 0xC4, 0x6E)
+                        : Color.FromRgb(0xE0, 0x4B, 0x3C));
+                }
+            };
+
+            _wifiStatus = new TextBlock
+            {
+                Text = "Saved in the display's NVS: survives OTA updates and reboots. A full USB/factory flash " +
+                       "erases it again. The password is never stored on the PC.",
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 620,
+                FontSize = 11,
+                Opacity = 0.75,
+                Margin = new Thickness(0, 2, 0, 4)
+            };
+            root.Children.Add(_wifiStatus);
+
+            // ---------------- flag test -----------------------------------
+            AddSection(root, "Test the flags");
+            var testPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
+            testPanel.Children.Add(new TextBlock
+            {
+                Text = "Flag",
+                Width = 260,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            _testFlag = new ComboBox { Width = 180 };
+            foreach (FlagKind kind in new[]
+            {
+                FlagKind.None, FlagKind.Green, FlagKind.Yellow, FlagKind.Blue,
+                FlagKind.White, FlagKind.Checkered, FlagKind.Red, FlagKind.Black, FlagKind.Orange
+            })
+            {
+                _testFlag.Items.Add(FlagModel.ToOption(kind));
+            }
+            _testFlag.SelectedItem = "YELLOW";
+            testPanel.Children.Add(_testFlag);
+            root.Children.Add(testPanel);
+
+            Button sendTest = AddButton(root, "Show for 10 seconds");
+            sendTest.Click += (s, e) => ShowTestFlag();
+            Button stopTest = AddButton(root, "Stop test");
+            stopTest.Click += (s, e) =>
+            {
+                _plugin.ClearTestFlag();
+                _testStatus.Text = "Test stopped; normal SimHub data resumes.";
+            };
+
+            _testStatus = new TextBlock
+            {
+                Text = "The test overrides the game for 10 seconds, so you can check every flag without driving.",
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 620,
+                FontSize = 11,
+                Opacity = 0.75,
+                Margin = new Thickness(0, 2, 0, 4)
+            };
+            root.Children.Add(_testStatus);
 
             // ---------------- diagnostics ---------------------------------
             AddSection(root, "Diagnostics");
@@ -224,6 +346,12 @@ namespace CydFlags.UI
 
             Settings.ShowBestLap = _showBestLap.IsChecked == true;
 
+            Settings.PageFlags = _pageFlags.IsChecked == true;
+            Settings.PageClock = _pageClock.IsChecked == true;
+            Settings.PageTower = _pageTower.IsChecked == true;
+            Settings.PageLogic = _pageLogic.IsChecked == true;
+            Settings.WifiSsid = (_wifiSsid.Text ?? string.Empty).Trim();
+
             Settings.ApplyBrightness = _applyBrightness.IsChecked == true;
             Settings.DimWhenNoGame = _dimWhenNoGame.IsChecked == true;
             Settings.Brightness = (int)Math.Round(_brightness.Value);
@@ -237,6 +365,14 @@ namespace CydFlags.UI
         private void MarkDirty()
         {
             _dirty = true;
+        }
+
+        private void ShowTestFlag()
+        {
+            string option = _testFlag.SelectedItem as string;
+            FlagKind kind = FlagModel.ParseName(option);
+            _plugin.ShowTestFlag(kind, 10);
+            _testStatus.Text = "Showing " + FlagModel.ToOption(kind) + " for 10 seconds.";
         }
 
         private void RefreshStatus()
@@ -339,6 +475,25 @@ namespace CydFlags.UI
                 }
             };
 
+            panel.Children.Add(box);
+            root.Children.Add(panel);
+            return box;
+        }
+
+        private PasswordBox AddPassword(Panel root, string label, double boxWidth)
+        {
+            var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
+            panel.Children.Add(new TextBlock
+            {
+                Text = label,
+                Width = 260,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            var box = new PasswordBox
+            {
+                Width = boxWidth,
+                VerticalContentAlignment = VerticalAlignment.Center
+            };
             panel.Children.Add(box);
             root.Children.Add(panel);
             return box;

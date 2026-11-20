@@ -28,6 +28,18 @@ namespace CydFlags
         /// race tower. The header above the tower says LAST or BEST.</summary>
         public bool ShowBestLap = false;
 
+        /// <summary>Which pages the display should offer. The plugin sends this
+        /// list to the ESP; the firmware hides disabled pages and the touch
+        /// cycle skips them.</summary>
+        public bool PageFlags = true;
+        public bool PageClock = true;
+        public bool PageTower = true;
+        public bool PageLogic = true;
+
+        /// <summary>Last SSID used for display WiFi provisioning. The password
+        /// is deliberately never persisted.</summary>
+        public string WifiSsid = "";
+
         /// <summary>Send a brightness value when the plugin connects.</summary>
         public bool ApplyBrightness = false;
 
@@ -40,10 +52,27 @@ namespace CydFlags
         /// <summary>Log every HTTP request (useful while setting up).</summary>
         public bool LogRequests = false;
 
+        /// <summary>Comma-separated page list understood by the firmware.</summary>
+        public string FeatureString()
+        {
+            string result = string.Empty;
+            if (PageFlags) result = AppendFeature(result, "flags");
+            if (PageClock) result = AppendFeature(result, "clock");
+            if (PageTower) result = AppendFeature(result, "tower");
+            if (PageLogic) result = AppendFeature(result, "logic");
+            return result.Length == 0 ? "none" : result;
+        }
+
+        private static string AppendFeature(string current, string name)
+        {
+            return current.Length == 0 ? name : current + "," + name;
+        }
+
         public void Clamp()
         {
             if (string.IsNullOrWhiteSpace(Host)) Host = "cyd-flags.local";
             Host = Host.Trim();
+            if (WifiSsid == null) WifiSsid = string.Empty;
 
             Port = Math.Max(1, Math.Min(65535, Port));
             HeartbeatMs = Math.Max(250, Math.Min(10000, HeartbeatMs));
