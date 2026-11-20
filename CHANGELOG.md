@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.8
+
+* **HTTP fallback until UDP is confirmed.** The plugin sends tower, logic and
+  rev payloads over HTTP at up to 5 Hz until the display's `udp_rx` counter has
+  moved at least once. A blocked UDP port (firewall, wrong port, old firmware)
+  therefore no longer leaves the display with only the clock/`NO PAGE`, while
+  confirmed UDP still updates at 20 Hz.
+* `UdpPort` values `0`/`1` are migrated to `18512`; a newly added display uses
+  `18512`.
+* Plugin 0.7.8; firmware 0.7.7 is sufficient.
+
 ## 0.7.7
 
 * **UDP diagnosis in the plugin.** The display now exposes a `udp_rx` counter

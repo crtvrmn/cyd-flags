@@ -24,7 +24,7 @@ namespace CydFlags
     [PluginName("CYD Flags")]
     public class CydFlagsPlugin : IPlugin, IDataPlugin, IWPFSettingsV2
     {
-        public const string Version = "0.7.7";
+        public const string Version = "0.7.8";
 
         public CydFlagsSettings Settings;
 
@@ -140,7 +140,9 @@ namespace CydFlags
                 if (!state.UdpRxSupported)
                     return "UDP: unknown" + (string.IsNullOrEmpty(state.UdpRxError) ? "" : " (" + state.UdpRxError + ")");
                 if (state.UdpBlocked)
-                    return "UDP: blocked - tower will be slow (HTTP fallback)";
+                    return "UDP: blocked - using HTTP fallback (slow)";
+                if (!state.UdpConfirmed)
+                    return "UDP: waiting for first packet - using HTTP fallback";
                 return "UDP: OK (display received " + state.UdpRxCount + ")";
             }
         }
@@ -918,6 +920,7 @@ namespace CydFlags
                     if (!state.UdpRxSupported || udpRx != state.UdpRxCountAtCheck)
                     {
                         state.UdpRxSupported = true;
+                        state.UdpConfirmed = udpRx > 0;
                         state.UdpRxCount = udpRx;
                         state.UdpRxCountAtCheck = udpRx;
                         state.UdpSentAtCheck = state.Udp.Sent;
@@ -974,11 +977,39 @@ namespace CydFlags
 
         private static bool SendRealtime(DeviceState state, string kind, string payload)
         {
-            if (kind == "timing") return state.Udp.SendTiming(payload) || state.Client.SendTiming(payload);
-            if (kind == "logic") return state.Udp.SendLogic(payload) || state.Client.SendLogic(payload);
-            if (kind == "rev") return state.Udp.SendRev(payload) || state.Client.SendRev(payload);
-            if (kind == "delta") return state.Udp.SendDelta(payload) || state.Client.SendDelta(payload);
-            return false;
+            bool udp;
+            switch (kind)
+            {
+                case "timing": udp = state.Udp.SendTiming(payload); break;
+                case "logic": udp = state.Udp.SendLogic(payload); break;
+                case "rev": udp = state.Udp.SendRev(payload); break;
+                case "delta": udp = state.Udp.SendDelta(payload); break;
+                default: return false;
+            }
+
+            // UDP is fire-and-forget: a successful send says nothing about
+            // delivery. Until the display's udp_rx counter has moved at least
+            // once, also push the same payload over HTTP (max 5 Hz). That keeps
+            // the tower usable on a firewall-blocked port and with older
+            // firmware, while confirmed UDP still runs at full speed.
+            bool needHttp = !state.UdpConfirmed || state.UdpBlocked;
+            if (!needHttp)
+                return udp;
+
+            DateTime now = DateTime.UtcNow;
+            if ((now - state.LastHttpRealtimeUtc).TotalMilliseconds < 200)
+                return udp;
+
+            state.LastHttpRealtimeUtc = now;
+            bool http;
+            switch (kind)
+            {
+                case "timing": http = state.Client.SendTiming(payload); break;
+                case "logic": http = state.Client.SendLogic(payload); break;
+                case "rev": http = state.Client.SendRev(payload); break;
+                default: http = state.Client.SendDelta(payload); break;
+            }
+            return udp || http;
         }
 
         private void Fail(DeviceState state, DateTime now)
@@ -1126,7 +1157,9 @@ namespace CydFlags
             public int HeartbeatCounter;
             public DateTime LastUdpCheckUtc;
             public bool UdpRxSupported;
+            public bool UdpConfirmed;
             public bool UdpBlocked;
+            public DateTime LastHttpRealtimeUtc;
             public int UdpRxCount;
             public int UdpRxCountAtCheck = -1;
             public int UdpSentAtCheck;
@@ -1269,6 +1302,8 @@ namespace CydFlags
             state.LastUdpCheckUtc = DateTime.MinValue;
             state.UdpRxCountAtCheck = -1;
             state.UdpBlocked = false;
+            state.UdpConfirmed = false;
+            state.LastHttpRealtimeUtc = DateTime.MinValue;
             state.LastSentFeatures = null;
             state.LastSentBrightness = -1;
             state.LastHeartbeatUtc = DateTime.MinValue;

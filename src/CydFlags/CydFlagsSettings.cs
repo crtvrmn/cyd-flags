@@ -88,7 +88,7 @@ namespace CydFlags
                 Orientation = "landscape";
 
             Port = Math.Max(1, Math.Min(65535, Port));
-            UdpPort = Math.Max(1, Math.Min(65535, UdpPort));
+            if (UdpPort <= 1 || UdpPort > 65535) UdpPort = 18512;
             Brightness = Math.Max(0, Math.Min(100, Brightness));
         }
     }

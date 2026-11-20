@@ -309,7 +309,7 @@ relativen Fahrer zu allen aktivierten Displays.
 | Display **weiß**, **Streifen** oder falsche Farben | Falscher Bildschirm-Chip. Eine der anderen beiden Dateien aus Abschnitt 1.1 flashen. |
 | Bild steht **auf dem Kopf** | Im Plugin unter **Display orientation** das andere Format wählen. Wenn es dann immer noch kopfüber ist, hilft nur eigene Firmware mit `display_rotation: "270"`. |
 | **NO WIFI** auf dem Display | Display ist nicht im WLAN. Router/SSID prüfen, näher stellen oder WLAN im Plugin neu speichern. **WIFI: SETUP AP** heißt: Einrichtungsmodus aktiv – mit `CYD Flags fallback` verbinden und `http://192.168.4.1` öffnen. |
-| **NO SIMHUB** auf dem Display | WLAN ist da, aber der Heartbeat kommt nicht an. Bei 0.7.5 konnte das passieren, wenn UDP blockiert war; **0.7.6** sendet den Heartbeat zusätzlich per HTTP. Plugin und Firmware auf 0.7.7 aktualisieren, SimHub starten, im Plugin das Display auswählen und **Test connection** drücken; IP/Host prüfen. |
+| **NO SIMHUB** auf dem Display | WLAN ist da, aber der Heartbeat kommt nicht an. Bei 0.7.5 konnte das passieren, wenn UDP blockiert war; **0.7.6** sendet den Heartbeat zusätzlich per HTTP. Plugin 0.7.8 und Firmware 0.7.7 aktualisieren, SimHub starten, im Plugin das Display auswählen und **Test connection** drücken; IP/Host prüfen. |
 | Plugin erscheint **nicht** in SimHub | DLL liegt im falschen Ordner, SimHub nicht neu gestartet, oder Windows blockiert die DLL (Rechtsklick → Eigenschaften → „Zulassen“). |
 | Uhrzeit ist **falsch** | Display hat kein Internet (NTP) oder eine andere Zeitzone. In `firmware/cyd-flags.yaml` steht `timezone: Europe/Berlin`; für andere Länder anpassen. |
 | Uhrzeit zeigt **--:--** | Die Uhr hat noch keine Internetzeit bekommen. Warten oder Internet/router prüfen. |
