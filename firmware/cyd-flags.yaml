@@ -30,7 +30,7 @@ substitutions:
   # On boards without a speaker this is simply silent.
   alarm_sound_pin: GPIO26
   # Shown on the boot splash; update together with the plugin version.
-  firmware_version: "0.7.9"
+  firmware_version: "0.7.11"
 
 esphome:
   name: ${device_name}
@@ -1167,6 +1167,18 @@ text:
     max_length: 8
   # UDP receive counter as a text entity: the ESPHome sensor HTTP endpoint
   # returns an empty reply on this build, but text entities work.
+  # Visible in the ESPHome web UI and over GET /text/firmware_version. This
+  # makes it possible to verify the flashed version without catching the
+  # 8-second boot splash.
+  - platform: template
+    name: firmware_version
+    id: firmware_version
+    optimistic: true
+    mode: text
+    min_length: 0
+    max_length: 16
+    initial_value: "${firmware_version}"
+    restore_value: false
   - platform: template
     name: udp_rx
     id: udp_rx

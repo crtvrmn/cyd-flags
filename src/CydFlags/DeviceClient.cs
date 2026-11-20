@@ -187,7 +187,9 @@ namespace CydFlags
                 var http = ex.Response as HttpWebResponse;
                 if (http != null)
                 {
-                    error = "udp_rx HTTP " + (int)http.StatusCode;
+                    error = (int)http.StatusCode == 404
+                                ? "display firmware too old (no text/udp_rx) - flash firmware 0.7.11"
+                                : "udp_rx HTTP " + (int)http.StatusCode;
                     http.Dispose();
                 }
                 else

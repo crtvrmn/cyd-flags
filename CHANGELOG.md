@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.11
+
+* Firmware version is exposed as the text entity `firmware_version`, visible in
+  the ESPHome web UI and via `GET /text/firmware_version`; no need to catch the
+  8-second boot splash.
+* Plugin reports a 404 on `text/udp_rx` as "display firmware too old" instead of
+  a bare HTTP error.
+* Plugin 0.7.11, firmware 0.7.11.
+
 ## 0.7.10
 
 * **UDP confirmation via `text/udp_rx`.** This ESPHome build returns an empty
