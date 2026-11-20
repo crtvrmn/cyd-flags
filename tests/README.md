@@ -1,7 +1,8 @@
 # Tests
 
 These are pure C# tests for the parts that do not need SimHub or Windows:
-flag priority, `Flag_Name` parsing and the option strings sent to the display.
+flag priority, `Flag_Name` parsing, the option strings sent to the display and
+the previous-lap `DeltaTracker` interpolation.
 
 ```bash
 dotnet run --project tests
@@ -15,8 +16,9 @@ ALL TESTS PASSED
 ```
 
 The test project targets `net8.0` and has no external package dependencies. It
-compiles `src/CydFlags/FlagModel.cs` directly, so it is also a quick syntax and
-logic check for changes to that file.
+compiles `src/CydFlags/FlagModel.cs` and `src/CydFlags/DeltaTracker.cs`
+directly; `GameReaderCommonStub.cs` supplies the three SimHub members the delta
+tracker reads, so no SDK is needed.
 
 The SimHub-dependent classes (`TimingBuilder`, `RaceLogicBuilder`,
 `CydFlagsPlugin`) cannot be unit-tested without the SimHub SDK and a running

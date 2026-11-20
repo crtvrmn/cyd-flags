@@ -27,10 +27,18 @@ namespace CydFlags
         public bool PageClock = true;
         public bool PageTower = true;
         public bool PageLogic = true;
+        public bool PageRev = true;
+
+        /// <summary>Physical mounting of this display. "portrait" is the
+        /// native 240x320 layout; "landscape" rotates it 90 degrees.</summary>
+        public string Orientation = "portrait";
 
         /// <summary>Show each driver's best lap instead of the last lap in the
         /// race tower. The header above the tower says LAST or BEST.</summary>
         public bool ShowBestLap = false;
+
+        /// <summary>Show the live delta bar to the previous lap on the race tower.</summary>
+        public bool ShowDeltaBar = true;
 
         /// <summary>Send a brightness value when the plugin connects.</summary>
         public bool ApplyBrightness = false;
@@ -53,8 +61,7 @@ namespace CydFlags
             if (PageClock) result = AppendFeature(result, "clock");
             if (PageTower) result = AppendFeature(result, "tower");
             if (PageLogic) result = AppendFeature(result, "logic");
-            // Future pages (for example a rev-limiter page) go here; the
-            // firmware and worker silently ignore unknown names.
+            if (PageRev) result = AppendFeature(result, "rev");
             return result.Length == 0 ? "none" : result;
         }
 
@@ -71,6 +78,10 @@ namespace CydFlags
             if (string.IsNullOrWhiteSpace(Host)) Host = "cyd-flags.local";
             Host = Host.Trim();
             if (WifiSsid == null) WifiSsid = string.Empty;
+            if (!string.Equals(Orientation, "landscape", StringComparison.OrdinalIgnoreCase))
+                Orientation = "portrait";
+            else
+                Orientation = "landscape";
 
             Port = Math.Max(1, Math.Min(65535, Port));
             Brightness = Math.Max(0, Math.Min(100, Brightness));
@@ -118,6 +129,11 @@ namespace CydFlags
         public bool PageClock = true;
         public bool PageTower = true;
         public bool PageLogic = true;
+        public bool PageRev = true;
+
+        /// <summary>Physical mounting of this display. "portrait" is the
+        /// native 240x320 layout; "landscape" rotates it 90 degrees.</summary>
+        public string Orientation = "portrait";
         public string WifiSsid = "";
         public bool ApplyBrightness = false;
         public bool DimWhenNoGame = false;
@@ -165,6 +181,8 @@ namespace CydFlags
                 PageClock = PageClock,
                 PageTower = PageTower,
                 PageLogic = PageLogic,
+                PageRev = PageRev,
+                Orientation = Orientation,
                 ShowBestLap = ShowBestLap,
                 ApplyBrightness = ApplyBrightness,
                 DimWhenNoGame = DimWhenNoGame,

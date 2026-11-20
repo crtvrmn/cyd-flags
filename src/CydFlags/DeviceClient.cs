@@ -78,6 +78,21 @@ namespace CydFlags
             return Post("text/logic/set?value=" + Uri.EscapeDataString(payload ?? string.Empty));
         }
 
+        public bool SendDelta(string payload)
+        {
+            return Post("text/delta/set?value=" + Uri.EscapeDataString(payload ?? string.Empty));
+        }
+
+        public bool SendRev(string payload)
+        {
+            return Post("text/rev/set?value=" + Uri.EscapeDataString(payload ?? string.Empty));
+        }
+
+        public bool SendOrientation(string orientation)
+        {
+            return Post("text/orientation/set?value=" + Uri.EscapeDataString(orientation ?? "portrait"));
+        }
+
         public bool SendFeatures(string features)
         {
             return Post("text/features/set?value=" + Uri.EscapeDataString(features ?? string.Empty));

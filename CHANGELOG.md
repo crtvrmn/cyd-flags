@@ -5,25 +5,30 @@
 * **Multiple CYD displays at once.** Each display has its own name, host/port,
   enabled flag, page selection, `LAST`/`BEST` choice, brightness/dim behaviour
   and WiFi provisioning.
-* The plugin computes the flag, game, race mode, timing and race-logic state
-  once, then sends the applicable parts to every enabled display. Timing is
-  skipped for displays without the tower page, race logic for displays without
-  the logic page.
-* One worker thread loops over the enabled displays. A missing or offline
-  display backs off by itself and does not delay the others; heartbeats and
-  brightness are per display.
-* Settings panel: **Displays** dropdown plus **Add device** / **Remove
-  device**. All device-specific controls now edit the selected display; the
-  heartbeat, minimum send interval and request logging stay global. Status
-  lines and the `CydFlagsLinked`/`CydFlagsDevice` properties follow the
-  selected display.
-* **Migration:** existing 0.6.0 settings are converted into one display named
-  `Display 1`, preserving the old host, port, pages, brightness and WiFi SSID.
-  A fresh installation also starts with one display.
-* **Test the flags** still works without a game and now applies to all enabled
-  displays. **Open display web UI**, **Save WiFi** and **Push brightness now**
-  act on the selected display. The WiFi password is never persisted on the PC.
-* Version bumped to 0.7.0. No firmware changes; the HTTP API is unchanged.
+* **Corner navigation on the CYD.** A 24 px dead cross splits the panel; bottom
+  right = next page, bottom left = previous page. The order is
+  tower → race logic → rev limiter → clock. Flags keep priority; the top half
+  is reserved for the clock/alarm controls.
+* **Rev-limiter page.** Large gear, speed in km/h, and an RPM bar that blinks
+  red at the redline. Available in races, practice and qualifying.
+* **Per-display orientation.** Portrait 240×320 or landscape 320×240 is selected
+  in the plugin and applied at runtime with `screen.set_rotation(...)`; one
+  firmware image supports both mountings.
+* **Previous-lap delta bar.** `DeltaTracker` samples `CurrentLapTime` against
+  `TrackPositionPercent` and interpolates the previous lap at the same position.
+  Green right = faster, orange left = slower; hides on the first lap and after
+  a reset.
+* **Daily alarm on the CYD.** Tap the small alarm icon top-left on the clock,
+  then set the time with the quadrants (+1 h / +5 min / off / save). The alarm
+  fires once per day, shows a flashing full-screen ALARM, and can play an
+  optional best-effort tone on GPIO26.
+* **Plugin settings panel** gained per-display page checkboxes (including Rev
+  limiter), the orientation combo, the delta-bar checkbox, and the alarm/touch
+  hints.
+* Firmware and HTTP API additions: `text/orientation`, `text/rev`,
+  `text/delta`, plus the alarm globals. Plugin 0.7.0 and firmware 0.7.0 belong
+  together.
+* Version bumped to 0.7.0.
 
 ## 0.6.0
 

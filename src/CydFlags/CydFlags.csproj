@@ -72,6 +72,8 @@
     <Compile Include="FlagReader.cs" />
     <Compile Include="TimingBuilder.cs" />
     <Compile Include="RaceLogicBuilder.cs" />
+    <Compile Include="RevBuilder.cs" />
+    <Compile Include="DeltaTracker.cs" />
     <Compile Include="UI\CydFlagsSettingsView.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

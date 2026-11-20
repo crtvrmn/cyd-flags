@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using System.Threading;
 using GameReaderCommon;
@@ -37,6 +38,8 @@ namespace CydFlags
         private string _timingLast = string.Empty;
         private string _timingBest = string.Empty;
         private string _logic = string.Empty;
+        private string _delta = string.Empty;
+        private string _rev = string.Empty;
         private string _lapLabelLast = "LAST";
         private string _lapLabelBest = "BEST";
 
@@ -56,6 +59,8 @@ namespace CydFlags
         private static readonly DateTime NoTiming = DateTime.MinValue;
         private DateTime _lastTimingBuildUtc = NoTiming;
         private DateTime _lastLogicBuildUtc = NoTiming;
+        private DateTime _lastRevBuildUtc = NoTiming;
+        private readonly DeltaTracker _deltaTracker = new DeltaTracker();
 
         // "Test flags" override: while set, DataUpdate ignores the game and
         // reports this flag so the user can check the panels without driving.
@@ -130,6 +135,7 @@ namespace CydFlags
         public string CurrentGame { get { lock (_stateLock) return _game; } }
         public bool RaceMode { get { lock (_stateLock) return _raceMode; } }
         public string CurrentLogic { get { lock (_stateLock) return _logic; } }
+        public string CurrentDelta { get { lock (_stateLock) return _delta; } }
 
         /// <summary>Timing payload for the selected display (LAST or BEST lap).</summary>
         public string CurrentTiming
@@ -228,6 +234,10 @@ namespace CydFlags
                 if (!Settings.Enabled)
                 {
                     SetGameRunning(false);
+                    SetRev(string.Empty);
+                    SetDelta(string.Empty);
+                    _deltaTracker.Reset();
+                    _lastRevBuildUtc = NoTiming;
                     SetState(FlagKind.None, string.Empty, false,
                         string.Empty, string.Empty, string.Empty, "LAST", "BEST");
                     return;
@@ -245,10 +255,14 @@ namespace CydFlags
                     // Treat a test as "game running" so the idle dim does not
                     // black out the panels while the user is checking flags.
                     SetGameRunning(true);
+                    SetRev(string.Empty);
+                    SetDelta(string.Empty);
+                    _deltaTracker.Reset();
                     SetState(testFlag, string.Empty, false,
                         string.Empty, string.Empty, string.Empty, "LAST", "BEST");
                     _lastTimingBuildUtc = NoTiming;
                     _lastLogicBuildUtc = NoTiming;
+                    _lastRevBuildUtc = NoTiming;
                     TimingBuilder.ResetTrend();
                     return;
                 }
@@ -256,10 +270,14 @@ namespace CydFlags
                 if (!data.GameRunning || data.NewData == null)
                 {
                     SetGameRunning(false);
+                    SetRev(string.Empty);
+                    SetDelta(string.Empty);
+                    _deltaTracker.Reset();
                     SetState(FlagKind.None, string.Empty, false,
                         string.Empty, string.Empty, string.Empty, "LAST", "BEST");
                     _lastTimingBuildUtc = NoTiming;
                     _lastLogicBuildUtc = NoTiming;
+                    _lastRevBuildUtc = NoTiming;
                     TimingBuilder.ResetTrend();
                     return;
                 }
@@ -272,12 +290,16 @@ namespace CydFlags
                 bool anyFlags = false;
                 bool anyTower = false;
                 bool anyLogic = false;
+                bool anyRev = false;
+                bool anyDelta = false;
                 foreach (CydFlagsDeviceSettings device in devices)
                 {
                     if (device == null || !device.Enabled) continue;
                     if (device.PageFlags) anyFlags = true;
                     if (device.PageTower) anyTower = true;
                     if (device.PageLogic) anyLogic = true;
+                    if (device.PageRev) anyRev = true;
+                    if (device.PageTower && device.ShowDeltaBar) anyDelta = true;
                 }
 
                 FlagKind kind = anyFlags ? FlagReader.ReadKind(data.NewData) : FlagKind.None;
@@ -337,6 +359,43 @@ namespace CydFlags
                     _lastLogicBuildUtc = NoTiming;
                     TimingBuilder.ResetTrend();
                 }
+
+                string revPayload = string.Empty;
+                DateTime revNow = DateTime.UtcNow;
+                if (anyRev)
+                {
+                    if ((revNow - _lastRevBuildUtc).TotalMilliseconds >= 100)
+                    {
+                        revPayload = RevBuilder.Build(data.NewData);
+                        _lastRevBuildUtc = revNow;
+                    }
+                    else
+                    {
+                        lock (_stateLock) revPayload = _rev;
+                    }
+                }
+                else
+                {
+                    _lastRevBuildUtc = NoTiming;
+                }
+                SetRev(revPayload);
+
+                string delta = string.Empty;
+                if (race && anyDelta)
+                {
+                    DeltaResult result = _deltaTracker.Update(data.NewData);
+                    if (result.HasValue)
+                    {
+                        double seconds = result.Seconds;
+                        string sign = seconds < -0.0005 ? "-" : "+";
+                        delta = sign + Math.Abs(seconds).ToString("0.000", CultureInfo.InvariantCulture);
+                    }
+                }
+                else
+                {
+                    _deltaTracker.Reset();
+                }
+                SetDelta(delta);
 
                 bool pit = Convert.ToBoolean(data.NewData.IsInPitLane);
                 string suffix = pit ? " PIT" : "";
@@ -684,6 +743,21 @@ namespace CydFlags
                 LogRequest(state, "features " + features);
             }
 
+            string orientation = device.Orientation ?? "portrait";
+            bool orientationDue = orientation != state.LastSentOrientation
+                || (now - state.LastOrientationSentUtc).TotalSeconds >= 10;
+            if (orientationDue)
+            {
+                // Older firmware returns 404 here; do not stop flags/timing for
+                // the whole display just because it predates rotation support.
+                if (state.Client.SendOrientation(orientation))
+                    LogRequest(state, "orientation " + orientation);
+                else
+                    LogRequest(state, "orientation not accepted (older firmware?)");
+                state.LastSentOrientation = orientation;
+                state.LastOrientationSentUtc = now;
+            }
+
             if (option != state.LastSentFlag
                 && (now - state.LastFlagSentUtc).TotalMilliseconds >= settings.MinSendIntervalMs)
             {
@@ -748,6 +822,26 @@ namespace CydFlags
                 LogRequest(state, "timing cleared");
             }
 
+            if (shared.Race && device.PageTower && device.ShowDeltaBar
+                && !string.IsNullOrEmpty(shared.Delta))
+            {
+                bool deltaDue = shared.Delta != state.LastSentDelta
+                    || (now - state.LastDeltaSentUtc).TotalSeconds >= 1;
+                if (deltaDue)
+                {
+                    if (!state.Client.SendDelta(shared.Delta)) { Fail(state, now); return; }
+                    state.LastSentDelta = shared.Delta;
+                    state.LastDeltaSentUtc = now;
+                    LogRequest(state, "delta " + shared.Delta);
+                }
+            }
+            else if (state.LastSentDelta != null)
+            {
+                if (!state.Client.SendDelta(string.Empty)) { Fail(state, now); return; }
+                state.LastSentDelta = null;
+                LogRequest(state, "delta cleared");
+            }
+
             if (shared.Race && device.PageLogic)
             {
                 bool logicDue = shared.Logic != state.LastSentLogic
@@ -765,6 +859,25 @@ namespace CydFlags
                 if (!state.Client.SendLogic(string.Empty)) { Fail(state, now); return; }
                 state.LastSentLogic = null;
                 LogRequest(state, "logic cleared");
+            }
+
+            if (device.PageRev && !string.IsNullOrEmpty(shared.Rev))
+            {
+                bool revDue = shared.Rev != state.LastSentRev
+                    || (now - state.LastRevSentUtc).TotalMilliseconds >= 1000;
+                if (revDue)
+                {
+                    if (!state.Client.SendRev(shared.Rev)) { Fail(state, now); return; }
+                    state.LastSentRev = shared.Rev;
+                    state.LastRevSentUtc = now;
+                    LogRequest(state, "rev " + shared.Rev);
+                }
+            }
+            else if (state.LastSentRev != null)
+            {
+                if (!state.Client.SendRev(string.Empty)) { Fail(state, now); return; }
+                state.LastSentRev = null;
+                LogRequest(state, "rev cleared");
             }
 
             // When "dim without game" is enabled, the backlight target is 0
@@ -870,6 +983,16 @@ namespace CydFlags
             }
         }
 
+        private void SetRev(string rev)
+        {
+            lock (_stateLock) _rev = rev ?? string.Empty;
+        }
+
+        private void SetDelta(string delta)
+        {
+            lock (_stateLock) _delta = delta ?? string.Empty;
+        }
+
         private SharedState ReadSharedState()
         {
             var state = new SharedState();
@@ -882,6 +1005,8 @@ namespace CydFlags
                 state.TimingLast = _timingLast;
                 state.TimingBest = _timingBest;
                 state.Logic = _logic;
+                state.Rev = _rev;
+                state.Delta = _delta;
                 state.LapLabelLast = _lapLabelLast;
                 state.LapLabelBest = _lapLabelBest;
             }
@@ -903,6 +1028,9 @@ namespace CydFlags
             public string LastSentLogic;
             public string LastSentLapLabel;
             public string LastSentFeatures;
+            public string LastSentRev;
+            public string LastSentDelta;
+            public string LastSentOrientation;
 
             public string HostKey;
             public bool WasEnabled;
@@ -915,6 +1043,9 @@ namespace CydFlags
             public DateTime LastLogicSentUtc;
             public DateTime LastLapLabelSentUtc;
             public DateTime LastFeaturesSentUtc;
+            public DateTime LastRevSentUtc;
+            public DateTime LastDeltaSentUtc;
+            public DateTime LastOrientationSentUtc;
 
             public DateTime BackoffUntilUtc;
             public int HeartbeatCounter;
@@ -940,6 +1071,8 @@ namespace CydFlags
             public string TimingLast;
             public string TimingBest;
             public string Logic;
+            public string Rev;
+            public string Delta;
             public string LapLabelLast;
             public string LapLabelBest;
         }
@@ -1047,6 +1180,9 @@ namespace CydFlags
             state.LastSentTiming = null;
             state.LastSentLogic = null;
             state.LastSentLapLabel = null;
+            state.LastSentRev = null;
+            state.LastSentDelta = null;
+            state.LastSentOrientation = null;
             state.LastSentFeatures = null;
             state.LastSentBrightness = -1;
             state.LastHeartbeatUtc = DateTime.MinValue;
@@ -1054,6 +1190,8 @@ namespace CydFlags
             state.LastTimingSentUtc = DateTime.MinValue;
             state.LastLogicSentUtc = DateTime.MinValue;
             state.LastLapLabelSentUtc = DateTime.MinValue;
+            state.LastRevSentUtc = DateTime.MinValue;
+            state.LastOrientationSentUtc = DateTime.MinValue;
             state.LastFeaturesSentUtc = DateTime.MinValue;
             state.LastFlagSentUtc = DateTime.MinValue;
             state.LastGameSentUtc = DateTime.MinValue;

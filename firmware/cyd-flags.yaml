@@ -26,6 +26,9 @@ substitutions:
   # The layout below adapts to both; 180/270 flip the image.
   display_rotation: "0"
   backlight_pin: GPIO21
+  # Optional alarm tone pin (GPIO26 has the small speaker on many CYD boards).
+  # On boards without a speaker this is simply silent.
+  alarm_sound_pin: GPIO26
 
 esphome:
   name: ${device_name}
@@ -141,27 +144,53 @@ display:
       // clock. Color codes: -=none, G=green, R=red, P=purple.
       const std::string timing = id(timing_raw);
       const std::string logic_text = id(logic).state;
-      // A flag still takes over the whole screen. While a race is running a
-      // tap cycles through the enabled race pages.
+
+      // Rev payload: gear~speed_kmh~rpm~max_rpm~redline~rpm_percent~blink.
+      const std::string rev_text = id(rev_raw);
+      std::string rev_f[7];
+      int rev_count = 0;
+      if (!rev_text.empty()) {
+        size_t q = 0;
+        while (rev_count < 7 && q <= rev_text.size()) {
+          size_t sep = rev_text.find('~', q);
+          if (sep == std::string::npos) sep = rev_text.size();
+          rev_f[rev_count++] = rev_text.substr(q, sep - q);
+          if (sep == rev_text.size()) break;
+          q = sep + 1;
+        }
+      }
+      const bool rev_ready = id(feat_rev) && link && rev_count > 0 && !rev_f[0].empty();
+
+      // A flag still takes over the whole screen. A real race has the tower
+      // and logic pages; rev is also available in practice/qualifying.
       const bool race_session = id(race_mode) && !flag_active
                                 && (!timing.empty() || !logic_text.empty());
+      const bool avail_tower = id(feat_tower) && race_session && !timing.empty();
+      const bool avail_logic = id(feat_logic) && race_session && !logic_text.empty();
+      const bool avail_clock = id(feat_clock);
+      const bool avail_rev = rev_ready;
       int view = id(race_view);
-      if (view == 0 && !id(feat_tower)) view = id(feat_logic) ? 1 : 2;
-      if (view == 1 && !id(feat_logic)) view = id(feat_clock) ? 2 : 0;
-      if (view == 2 && !id(feat_clock)) view = id(feat_tower) ? 0 : 1;
-      if (view == 0 && !id(feat_tower)) view = 2;
-      if (view == 1 && !id(feat_logic)) view = 2;
+      const bool avail[4] = {avail_tower, avail_logic, avail_clock, avail_rev};
+      if (view < 0 || view > 3 || !avail[view]) {
+        const int order[4] = {0, 1, 3, 2};
+        for (int i = 0; i < 4; i++) {
+          if (avail[order[i]]) { view = order[i]; break; }
+        }
+      }
 
-      const bool race = race_session && view == 0 && id(feat_tower) && !timing.empty();
-      const bool logic_page = race_session && view == 1 && id(feat_logic) && !logic_text.empty();
-      const bool clock_page = race_session && view == 2 && id(feat_clock);
+      const bool race = view == 0 && avail_tower;
+      const bool logic_page = view == 1 && avail_logic;
+      const bool rev_page = view == 3 && avail_rev && !flag_active;
+      const bool clock_page = view == 2 && avail_clock;
 
       // Pages the corner navigation may visit. Keep these rules in sync with
       // the on_touch lambda below.
-      const bool nav_tower = id(race_mode) && id(feat_tower) && !timing.empty();
-      const bool nav_logic = id(race_mode) && id(feat_logic) && !logic_text.empty();
-      const bool nav_clock = id(race_mode) && id(feat_clock);
-      const int nav_page_count = (nav_tower ? 1 : 0) + (nav_logic ? 1 : 0) + (nav_clock ? 1 : 0);
+      const bool nav_tower = id(feat_tower) && race_session && !timing.empty();
+      const bool nav_logic = id(feat_logic) && race_session && !logic_text.empty();
+      const bool nav_clock = id(feat_clock);
+      const bool nav_rev = rev_ready;
+      const int nav_page_count = (nav_tower ? 1 : 0) + (nav_logic ? 1 : 0)
+                                 + (nav_clock ? 1 : 0) + (nav_rev ? 1 : 0);
       // The touch lambda blocks whenever a flag is latched, with or without a
       // link; hide the hint under the same rule so it never advertises dead
       // buttons.
@@ -170,7 +199,7 @@ display:
       Color bg = Color(12, 14, 20);
       Color fg = Color(235, 235, 240);
 
-      if (!race && !logic_page) {
+      if (!race && !logic_page && !rev_page) {
         if (!flag_active) {
           bg = Color(12, 14, 20);
           fg = Color(235, 235, 240);
@@ -193,11 +222,64 @@ display:
         }
       }
 
+      if (rev_page) {
+        bg = Color(10, 12, 18);
+        fg = Color(235, 235, 240);
+        if (rev_count > 6 && rev_f[6] == "1" && (millis() / 250) % 2 == 0) {
+          bg = Color(190, 20, 25);
+          fg = Color(255, 255, 255);
+        }
+      }
       it.fill(bg);
+
+      // ---- Alarm clock ----------------------------------------------------
+      // Fire once per day: the day-of-year is the date key, so the alarm does
+      // not re-trigger during the whole minute it matches.
+      if (now.is_valid() && id(alarm_enabled) && !id(alarm_edit)
+          && now.hour == id(alarm_hour) && now.minute == id(alarm_minute)
+          && (int) now.day_of_year != id(alarm_fired_day)) {
+        id(alarm_active) = true;
+        id(alarm_fired_day) = (int) now.day_of_year;
+      }
+
+      // The alarm overlay wins over races, pages and flags.
+      if (id(alarm_active)) {
+        const bool flash = (millis() / 500) % 2 == 0;
+        it.fill(flash ? Color(210, 25, 30) : Color(245, 240, 235));
+        const Color ink = flash ? Color(255, 255, 255) : Color(150, 12, 16);
+        it.print(W / 2, H / 2 - 62, id(font_hero), ink, TextAlign::CENTER, "ALARM");
+        it.print(W / 2, H / 2 + 8, id(font_hero), ink, TextAlign::CENTER, clock_text.c_str());
+        it.print(W / 2, H / 2 + 74, id(font_sub), ink, TextAlign::CENTER, "TAP TO STOP");
+        if (!id(alarm_buzzer).is_playing()) {
+          id(alarm_buzzer).play("alarm:d=8,o=6,b=240:c,p,c,p");
+        }
+        return;
+      }
+
+      // Alarm setup: four quadrants, nothing else. Tap handling below.
+      if (id(alarm_edit)) {
+        it.fill(Color(12, 14, 20));
+        char alarm_text[8];
+        snprintf(alarm_text, sizeof(alarm_text), "%02d:%02d", id(alarm_hour), id(alarm_minute));
+        it.print(W / 2, H / 6, id(font_hero), Color(235, 235, 240), TextAlign::CENTER, "ALARM");
+        it.print(W / 2, H * 2 / 5, id(font_hero), Color(255, 200, 70), TextAlign::CENTER, alarm_text);
+        it.print(W / 2, H * 3 / 5, id(font_sub),
+                 id(alarm_enabled) ? Color(255, 120, 90) : Color(140, 145, 155),
+                 TextAlign::CENTER, id(alarm_enabled) ? "ARMED" : "OFF");
+        it.print(10, 10, id(font_small), Color(150, 155, 165), TextAlign::CENTER_LEFT, "+1h");
+        it.print(W - 10, 10, id(font_small), Color(150, 155, 165), TextAlign::CENTER_RIGHT, "+5m");
+        it.print(10, H - 10, id(font_small), Color(150, 155, 165), TextAlign::CENTER_LEFT, "OFF");
+        it.print(W - 10, H - 10, id(font_small), Color(150, 155, 165), TextAlign::CENTER_RIGHT, "SAVE");
+        it.print(W / 2, H * 4 / 5, id(font_small), Color(150, 155, 165), TextAlign::CENTER,
+                 "TL +1h   TR +5m");
+        it.print(W / 2, H * 9 / 10, id(font_small), Color(150, 155, 165), TextAlign::CENTER,
+                 "BL off/cancel   BR save");
+        return;
+      }
 
       // Nothing enabled for this state (e.g. flags-only and no flag): say so
       // instead of leaving a confusing clock that the user disabled.
-      if (!race && !logic_page && !flag_active && !id(feat_clock) && !clock_page) {
+      if (!race && !logic_page && !rev_page && !flag_active && !id(feat_clock) && !clock_page) {
         it.print(W / 2, H / 2, id(font_sub), Color(130, 135, 145), TextAlign::CENTER,
                  link ? "NO PAGE" : "NO LINK");
         return;
@@ -232,6 +314,53 @@ display:
           it.print(W - 6, H - 16, id(font_small), Color(90, 95, 105), TextAlign::CENTER_RIGHT, ">");
         }
       };
+
+      if (rev_page) {
+        auto rev_int = [](const std::string &value) {
+          return (value.empty() || value == "-") ? 0 : atoi(value.c_str());
+        };
+        const bool has_speed = rev_count > 1 && rev_f[1] != "-";
+        const bool has_rpm = rev_count > 2 && rev_f[2] != "-";
+        const int max_rpm = rev_count > 3 ? rev_int(rev_f[3]) : 0;
+        const int redline = rev_count > 4 ? rev_int(rev_f[4]) : 0;
+        int percent = rev_count > 5 ? rev_int(rev_f[5]) : 0;
+        if (percent < 0) percent = 0;
+        if (percent > 100) percent = 100;
+
+        const int bar_x = 8;
+        const int bar_y = 8;
+        const int bar_w = W - 16;
+        const int bar_h = 10;
+        it.filled_rectangle(bar_x, bar_y, bar_w, bar_h, Color(35, 38, 48));
+        const int fill_w = bar_w * percent / 100;
+        if (fill_w > 0) {
+          Color fill(60, 220, 120);
+          if (percent >= 90) fill = Color(255, 70, 60);
+          else if (percent >= 70) fill = Color(255, 200, 40);
+          it.filled_rectangle(bar_x, bar_y, fill_w, bar_h, fill);
+        }
+        if (max_rpm > 0 && redline > 0 && redline < max_rpm) {
+          int red_x = bar_x + (bar_w * redline) / max_rpm;
+          it.filled_rectangle(red_x, bar_y, 2, bar_h, Color(255, 255, 255));
+        }
+        it.print(8, 27, id(font_small), Color(170, 175, 185), TextAlign::CENTER_LEFT, "REV");
+        std::string rpm_line = has_rpm ? rev_f[2] + " RPM" : "-- RPM";
+        it.print(W - 8, 27, id(font_small), Color(170, 175, 185), TextAlign::CENTER_RIGHT,
+                 rpm_line.c_str());
+
+        it.print(W / 2, portrait ? 168 : 118, id(font_gear), fg, TextAlign::CENTER,
+                 rev_f[0].c_str());
+        std::string speed_line = has_speed ? rev_f[1] + " km/h" : "-- km/h";
+        it.print(W / 2, portrait ? 264 : 208, id(font_speed), Color(210, 215, 225),
+                 TextAlign::CENTER, speed_line.c_str());
+
+        if (show_ip) {
+          it.print(6, H - 12, id(font_small), Color(150, 150, 160), TextAlign::CENTER_LEFT,
+                   id(ip_address).state.c_str());
+        }
+        draw_nav_hint();
+        return;
+      }
 
       if (logic_page) {
         // Current lap, live delta to the personal best, and the three sectors.
@@ -343,8 +472,8 @@ display:
 
         // No sector times any more: the extra height makes the lap time and
         // driver name noticeably bigger.
-        const int row_h = H >= 300 ? 96 : 72;
-        const int top = 24;
+        const int row_h = portrait ? 80 : 58;
+        const int top = portrait ? 24 : 20;
         for (int i = 0; i < rows; i++) {
           int y = top + i * row_h;
           if (i == 1) {
@@ -409,6 +538,24 @@ display:
       it.print(W / 2, hero_y, hero_font, hero_color, TextAlign::CENTER, title.c_str());
       it.print(W / 2, sub_y, id(font_sub), sub_color, TextAlign::CENTER, sub.c_str());
 
+      // Idle clock screen: small alarm shortcut top-left.
+      if (!race_session && !flag_active && id(feat_clock)) {
+        const bool armed = id(alarm_enabled);
+        const Color alarm_color = armed ? Color(255, 120, 90) : Color(150, 155, 165);
+        const int ax = 18, ay = 18;
+        it.circle(ax, ay, 8, alarm_color);
+        it.line(ax, ay, ax, ay - 5, alarm_color);
+        it.line(ax, ay, ax + 5, ay, alarm_color);
+        it.line(ax - 7, ay - 9, ax - 3, ay - 5, alarm_color);
+        it.line(ax + 7, ay - 9, ax + 3, ay - 5, alarm_color);
+        if (armed) {
+          char alarm_text[10];
+          snprintf(alarm_text, sizeof(alarm_text), "AL %02d:%02d",
+                   id(alarm_hour), id(alarm_minute));
+          it.print(ax + 14, ay, id(font_small), alarm_color, TextAlign::CENTER_LEFT, alarm_text);
+        }
+      }
+
       if (show_ip) {
         it.print(6, H - 12, id(font_small), Color(150, 150, 160), TextAlign::CENTER_LEFT, id(ip_address).state.c_str());
       }
@@ -437,6 +584,43 @@ touchscreen:
           const int x = touch.x;
           const int y = touch.y;
 
+          // Alarm overlay: any tap dismisses it. The alarm stays armed for the
+          // next day.
+          if (id(alarm_active)) {
+            id(alarm_active) = false;
+            id(alarm_buzzer).stop();
+            return;
+          }
+
+          // Alarm setup: four quadrants; page navigation is suspended.
+          // TL hour +1, TR minute +5, BL cancel/off, BR save + arm.
+          if (id(alarm_edit)) {
+            if (y < H / 2) {
+              if (x < W / 2) id(alarm_hour) = (id(alarm_hour) + 1) % 24;
+              else id(alarm_minute) = (id(alarm_minute) + 5) % 60;
+            } else {
+              if (x < W / 2) {
+                id(alarm_enabled) = false;
+              } else {
+                id(alarm_enabled) = true;
+                id(alarm_fired_day) = -1;
+              }
+              id(alarm_edit) = false;
+            }
+            return;
+          }
+
+          // Idle clock screen: top-left opens the alarm setup.
+          const bool touch_link = id(link_seen) && (millis() - id(link_last_ms) < 5000);
+          const bool touch_flag = id(feat_flags) && touch_link && id(flag_state) != "NONE";
+          const bool touch_race = id(race_mode) && !touch_flag
+                                  && (!id(timing_raw).empty() || !id(logic).state.empty());
+          if (!touch_race && !touch_flag && id(feat_clock)
+              && x < W / 2 && y < H / 2) {
+            id(alarm_edit) = true;
+            return;
+          }
+
           // 24 px dead cross: ignore the centre seam (12 px each side).
           if (std::abs(x - W / 2) < 12 || std::abs(y - H / 2) < 12) return;
 
@@ -444,25 +628,19 @@ touchscreen:
           const bool blocked_by_flag = id(feat_flags) && id(flag_state) != "NONE";
           if (blocked_by_flag) return;
 
-          // Top half is reserved for future functions.
+          // Top half is reserved for the clock/alarm controls.
           if (y < H / 2) return;
 
-          // Taps outside a race are ignored for now.
-          if (!id(race_mode)) return;
-
-          // Same as before: without any race payload the session has not
-          // really started, so ignore taps instead of moving a hidden page.
-          if (id(timing_raw).empty() && id(logic).state.empty()) return;
-
           // Pages the navigation may visit, indexed like race_view:
-          // 0 = timing tower, 1 = race logic, 2 = clock. Extend this array
-          // (and kPageCount) when a page is added.
-          const int kPageCount = 3;
+          // 0 = timing tower, 1 = race logic, 2 = clock, 3 = rev limiter.
+          const int kPageCount = 4;
           const bool available[kPageCount] = {
               id(race_mode) && id(feat_tower) && !id(timing_raw).empty(),
               id(race_mode) && id(feat_logic) && !id(logic).state.empty(),
-              id(race_mode) && id(feat_clock),
+              id(feat_clock),
+              id(feat_rev) && !id(rev_raw).empty() && id(link_seen),
           };
+          const int order[kPageCount] = {0, 1, 3, 2};
 
           bool any_available = false;
           for (int i = 0; i < kPageCount; i++) {
@@ -472,10 +650,12 @@ touchscreen:
 
           // Bottom-left goes back, bottom-right goes forward; both wrap.
           const int direction = (x > W / 2) ? 1 : -1;
-          const int view = id(race_view);
+          int pos = 0;
+          for (int i = 0; i < kPageCount; i++) {
+            if (order[i] == id(race_view)) pos = i;
+          }
           for (int step = 1; step <= kPageCount; step++) {
-            int candidate = (view + direction * step) % kPageCount;
-            if (candidate < 0) candidate += kPageCount;
+            int candidate = order[(pos + direction * step + kPageCount) % kPageCount];
             if (available[candidate]) {
               id(race_view) = candidate;
               break;
@@ -509,6 +689,14 @@ font:
     size: 22
     glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;!?()[]&+/-_'~"
   - file: "fonts/DejaVuSansCondensed-Bold.ttf"
+    id: font_gear
+    size: 120
+    glyphs: "0123456789RN-+"
+  - file: "fonts/DejaVuSansCondensed-Bold.ttf"
+    id: font_speed
+    size: 28
+    glyphs: "0123456789 km/h-"
+  - file: "fonts/DejaVuSansCondensed-Bold.ttf"
     id: font_small
     size: 13
     glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;!?()[]&+/-_'~<>"
@@ -522,6 +710,16 @@ output:
     id: backlight
     pin: ${backlight_pin}
     frequency: 2000Hz
+  # Optional alarm buzzer; silent unless the alarm overlay is active.
+  - platform: ledc
+    id: alarm_output
+    pin: ${alarm_sound_pin}
+    frequency: 2000Hz
+
+rtttl:
+  - id: alarm_buzzer
+    output: alarm_output
+    gain: 0.35
 
 # ---------------------------------------------------------------------------
 # State for the display
@@ -562,11 +760,15 @@ globals:
     type: int
     restore_value: false
     initial_value: "0"
+  - id: rev_raw
+    type: std::string
+    restore_value: false
+    initial_value: '""'
   # Pages/features enabled from the SimHub plugin. "none" disables all pages.
   - id: feature_list
     type: std::string
     restore_value: true
-    initial_value: '"flags,clock,tower,logic"'
+    initial_value: '"flags,clock,tower,logic,rev"'
   - id: feat_flags
     type: bool
     restore_value: false
@@ -583,6 +785,34 @@ globals:
     type: bool
     restore_value: false
     initial_value: "true"
+  - id: feat_rev
+    type: bool
+    restore_value: false
+    initial_value: "true"
+  - id: alarm_hour
+    type: int
+    restore_value: true
+    initial_value: "7"
+  - id: alarm_minute
+    type: int
+    restore_value: true
+    initial_value: "0"
+  - id: alarm_enabled
+    type: bool
+    restore_value: true
+    initial_value: "false"
+  - id: alarm_edit
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: alarm_active
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: alarm_fired_day
+    type: int
+    restore_value: false
+    initial_value: "-1"
 
 select:
   - platform: template
@@ -661,13 +891,30 @@ text:
     min_length: 0
     max_length: 255
   - platform: template
+    name: delta
+    id: delta
+    optimistic: true
+    mode: text
+    min_length: 0
+    max_length: 16
+  - platform: template
+    name: rev
+    id: rev
+    optimistic: true
+    mode: text
+    min_length: 0
+    max_length: 64
+    on_value:
+      - lambda: |-
+          id(rev_raw) = x;
+  - platform: template
     name: lap_label
     id: lap_label
     optimistic: true
     mode: text
     min_length: 0
     max_length: 8
-  # Comma-separated page list sent by the plugin: flags,clock,tower,logic.
+  # Comma-separated page list sent by the plugin: flags,clock,tower,logic,rev.
   # An empty value means "all pages" for compatibility; "none" hides all.
   - platform: template
     name: features
@@ -676,7 +923,7 @@ text:
     mode: text
     min_length: 0
     max_length: 64
-    initial_value: "flags,clock,tower,logic"
+    initial_value: "flags,clock,tower,logic,rev"
     restore_value: true
     on_value:
       - lambda: |-
@@ -685,9 +932,29 @@ text:
           id(feat_clock) = x.empty() || x.find("clock") != std::string::npos;
           id(feat_tower) = x.empty() || x.find("tower") != std::string::npos;
           id(feat_logic) = x.empty() || x.find("logic") != std::string::npos;
+          id(feat_rev) = x.empty() || x.find("rev") != std::string::npos;
           if (!id(feat_tower) && id(race_view) == 0) id(race_view) = id(feat_logic) ? 1 : 2;
           if (!id(feat_logic) && id(race_view) == 1) id(race_view) = id(feat_clock) ? 2 : 0;
           if (!id(feat_clock) && id(race_view) == 2) id(race_view) = id(feat_tower) ? 0 : 1;
+          if (!id(feat_rev) && id(race_view) == 3) id(race_view) = 0;
+
+  # Per-CYD orientation, selected in the SimHub plugin. Landscape rotates the
+  # panel by 90 degrees at runtime, so one firmware supports both mountings.
+  - platform: template
+    name: orientation
+    id: orientation
+    optimistic: true
+    mode: text
+    min_length: 0
+    max_length: 8
+    initial_value: "portrait"
+    restore_value: true
+    on_value:
+      - lambda: |-
+          const bool landscape = (x == "landscape");
+          id(screen).set_rotation(landscape ? display::DISPLAY_ROTATION_90_DEGREES
+                                            : display::DISPLAY_ROTATION_0_DEGREES);
+          if (id(screen).is_ready()) id(screen).update();
 
 button:
   - platform: template

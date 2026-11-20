@@ -43,6 +43,7 @@ namespace CydFlags.UI
         private TextBox _host;
         private TextBox _port;
         private CheckBox _showBestLap;
+        private CheckBox _showDeltaBar;
         private CheckBox _applyBrightness;
         private CheckBox _dimWhenNoGame;
         private Slider _brightness;
@@ -50,6 +51,8 @@ namespace CydFlags.UI
         private CheckBox _pageClock;
         private CheckBox _pageTower;
         private CheckBox _pageLogic;
+        private CheckBox _pageRev;
+        private ComboBox _orientation;
         private TextBox _wifiSsid;
         private PasswordBox _wifiPassword;
         private TextBlock _wifiStatus;
@@ -361,10 +364,31 @@ namespace CydFlags.UI
                 () => device.PageTower, v => device.PageTower = v);
             _pageLogic = AddCheck(root, "Race logic (current lap, sectors, delta)",
                 () => device.PageLogic, v => device.PageLogic = v);
+            _pageRev = AddCheck(root, "Rev limiter (gear, speed, RPM bar)",
+                () => device.PageRev, v => device.PageRev = v);
+
+            var orientationRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, 4, 0, 2)
+            };
+            orientationRow.Children.Add(new TextBlock
+            {
+                Text = "Display orientation",
+                Width = 260,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            _orientation = new ComboBox { Width = 220 };
+            _orientation.Items.Add("Portrait (240x320)");
+            _orientation.Items.Add("Landscape (320x240)");
+            _orientation.SelectedIndex =
+                string.Equals(device.Orientation, "landscape", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            orientationRow.Children.Add(_orientation);
+            root.Children.Add(orientationRow);
 
             root.Children.Add(new TextBlock
             {
-                Text = "The plugin sends this list to the display. Disabled pages are skipped by the touch cycle; " +
+                Text = "The plugin sends this list to the display. Disabled pages are skipped by the corner navigation; " +
                        "with no page enabled the display shows NO PAGE. Flags still keep priority over the other pages.",
                 TextWrapping = TextWrapping.Wrap,
                 MaxWidth = 620,
@@ -375,6 +399,8 @@ namespace CydFlags.UI
 
             _showBestLap = AddCheck(root, "Race tower: show best lap instead of last lap",
                 () => device.ShowBestLap, v => device.ShowBestLap = v);
+            _showDeltaBar = AddCheck(root, "Race tower: show live delta bar to the previous lap",
+                () => device.ShowDeltaBar, v => device.ShowDeltaBar = v);
 
             AddSection(root, "Backlight on this display");
             _applyBrightness = AddCheck(root, "Set display brightness from SimHub",
@@ -518,11 +544,16 @@ namespace CydFlags.UI
                 }
 
                 device.ShowBestLap = _showBestLap != null && _showBestLap.IsChecked == true;
+                device.ShowDeltaBar = _showDeltaBar != null && _showDeltaBar.IsChecked == true;
 
                 device.PageFlags = _pageFlags != null && _pageFlags.IsChecked == true;
                 device.PageClock = _pageClock != null && _pageClock.IsChecked == true;
                 device.PageTower = _pageTower != null && _pageTower.IsChecked == true;
                 device.PageLogic = _pageLogic != null && _pageLogic.IsChecked == true;
+                device.PageRev = _pageRev != null && _pageRev.IsChecked == true;
+                device.Orientation = _orientation != null && _orientation.SelectedIndex == 1
+                    ? "landscape"
+                    : "portrait";
 
                 if (_wifiSsid != null)
                     device.WifiSsid = (_wifiSsid.Text ?? string.Empty).Trim();

@@ -13,9 +13,13 @@ Am Ende zeigt dein „Cheap Yellow Display“ (CYD):
   als deine Bestzeit, rot = langsamer).
 - außerhalb des Rennens (Menü, Training, Qualifying): **die echte Uhrzeit**,
 - wenn eine Flagge kommt: die Flagge groß auf dem ganzen Bildschirm,
-- **im Rennen: kurz aufs Display tippen** → Racelogic; nochmal tippen → große
-  Uhr; nochmal tippen → Turm wieder da. Flaggen haben Vorrang, außerhalb des
-  Rennens passiert nichts,
+- eine **Rev-Limiter-Seite** mit großem Gang, km/h und einer RPM-Leiste, die
+  an der Grenze rot blinkt (auch im Training/Qualifying),
+- **Tippen** auf die unteren Ecken: unten rechts = nächste Seite, unten links =
+  zurück. Reihenfolge: Turm → Racelogic → Rev-Limiter → Uhr → Turm. Im
+  Training/Qualifying gibt es Rev-Limiter und Uhr. Flaggen haben Vorrang,
+- eine **Alarm-Uhr**: oben links auf der Uhr tippen und mit den vier Ecken
+  Stunden/Minuten stellen, speichern und scharf schalten,
 - die IP-Adresse nur in den ersten 15 Sekunden nach dem Start.
 
 Du kannst **mehrere Displays** gleichzeitig betreiben. Sie zeigen alle dieselben
@@ -58,7 +62,9 @@ vom Bildschirm-Chip deines CYDs ab:
 
 Wenn das Bild nach dem Flashen falsch aussieht (Streifen, gespiegelt, falsche
 Farben), flash einfach die nächste Datei. Die Firmware ist sonst identisch.
-Das ist die fertige Firmware – du musst dafür kein ESPHome installieren.
+Das ist die fertige Firmware – du musst dafür kein ESPHome installieren. Die
+Dateien starten im Hochformat; im Plugin kannst du pro Display auch Querformat
+einstellen, ohne neu zu flashen.
 
 ### 1.2 Browser öffnen
 
@@ -230,9 +236,14 @@ es weiter, die übrigen Displays werden normal aktualisiert.
 Diese Bereiche bearbeiten immer das im Auswahlfeld gewählte Display:
 
 - **Pages on this display:** Hake an, was dieses Display können soll:
-  **Flags**, **Clock**, **Relative tower** und **Race logic**. Was du abwählst,
-  wird beim Tippen übersprungen. Wenn du alles abwählst, zeigt das Display
-  **NO PAGE**. Flaggen haben weiterhin Vorrang.
+  **Flags**, **Clock**, **Relative tower**, **Race logic** und **Rev
+  limiter**. Was du abwählst, wird bei der Ecken-Navigation übersprungen. Wenn
+  du alles abwählst, zeigt das Display **NO PAGE**. Flaggen haben weiterhin
+  Vorrang.
+- **Display orientation:** **Portrait (240×320)** oder **Landscape (320×240)**
+  pro Display. Das Plugin dreht die Anzeige zur Laufzeit; du brauchst keine
+  andere Firmware-Datei. Die Einstellung gilt für das ganze Display, nicht für
+  einzelne Seiten.
 - **Race tower: show best lap instead of last lap:** pro Display wählbar, ob
   der Turm **LAST** oder **BEST** anzeigt.
 - **WiFi on this display:** Trage **SSID** und **Passwort** ein und klicke
@@ -261,11 +272,15 @@ relativen Fahrer zu allen aktivierten Displays.
   keinen Abstand (0.00 wäre sinnlos) und ist nur violett, nie rot/grün.
   Im Plugin kannst du zwischen **LAST** (letzte Runde) und **BEST** (beste
   Runde) umschalten. Bist du in der Boxengasse, steht oben zusätzlich **PIT**.
-  **Tippen** aufs Display schaltet weiter: **Turm → Racelogic → große Uhr →
-  Turm**. Das geht nur im Rennen, und eine Flagge hat immer Vorrang. Die
-  Racelogic-Seite zeigt deine aktuelle Runde, das Delta zur persönlichen
+  **Tippen** auf die unteren Ecken schaltet weiter: **Turm → Racelogic →
+  Rev-Limiter → große Uhr → Turm**. Im Rennen funktionieren alle Seiten; im
+  Training/Qualifying nur Rev-Limiter und Uhr. Eine Flagge hat immer Vorrang.
+  Die Racelogic-Seite zeigt deine aktuelle Runde, das Delta zur persönlichen
   Bestzeit und die drei Sektoren (grün = schneller, rot = langsamer als deine
-  Bestzeit; noch nicht gefahrene Sektoren bleiben neutral).
+  Bestzeit; noch nicht gefahrene Sektoren bleiben neutral). Der Rev-Limiter
+  zeigt Gang, km/h und die RPM-Leiste rot blinkend an der Grenze. Die Uhrzeit
+  oben links ist im Rennen klein; außerhalb groß mit Datum. Oben links auf der
+  Uhr öffnest du den **Alarm**: vier Ecken = Stunde +1, Minute +5, aus, speichern.
 
 > **Startampel:** SimHub stellt keine Startlichter/Countdown-Daten bereit, daher
 > kann die Anzeige keine echte Ampel zeigen. Die **PIT**-Anzeige ist nur ein
@@ -283,7 +298,7 @@ relativen Fahrer zu allen aktivierten Displays.
 | Display bleibt **schwarz** | USB-Kabel prüfen (Datenkabel!), neu einstecken. Kurz warten – der ESP32 braucht ein paar Sekunden. |
 | Display **rebootet ständig** / im Log steht `Guru Meditation` | Veraltete Firmware. Aktuelle Datei aus Abschnitt 1.1 neu flashen, danach RST drücken. |
 | Display **weiß**, **Streifen** oder falsche Farben | Falscher Bildschirm-Chip. Eine der anderen beiden Dateien aus Abschnitt 1.1 flashen. |
-| Bild steht **auf dem Kopf** | In `firmware/cyd-flags.yaml` `display_rotation: "270"` setzen und selbst bauen. |
+| Bild steht **auf dem Kopf** | Im Plugin unter **Display orientation** das andere Format wählen. Wenn es dann immer noch kopfüber ist, hilft nur eigene Firmware mit `display_rotation: "270"`. |
 | **NO LINK** trotz laufendem SimHub | IP im Plugin prüfen, Display und PC im gleichen WLAN, `Test connection` drücken. |
 | Plugin erscheint **nicht** in SimHub | DLL liegt im falschen Ordner, SimHub nicht neu gestartet, oder Windows blockiert die DLL (Rechtsklick → Eigenschaften → „Zulassen“). |
 | Uhrzeit ist **falsch** | Display hat kein Internet (NTP) oder eine andere Zeitzone. In `firmware/cyd-flags.yaml` steht `timezone: Europe/Berlin`; für andere Länder anpassen. |
@@ -292,7 +307,7 @@ relativen Fahrer zu allen aktivierten Displays.
 | Kein WLAN **`CYD Flags fallback`** und `192.168.4.1` nicht erreichbar | Wichtig: Du musst **zuerst** am Handy/PC mit `CYD Flags fallback` verbunden sein, sonst ist `192.168.4.1` nicht erreichbar. Dann: RST-Taste am Display drücken, 20 s warten. Prüfe, ob du wirklich eine `.factory.bin` (ca. 1 MB) und nicht die `.ota.bin` geflasht hast. Wenn das Display schwarz bleibt, ist die Firmware nicht gestartet → neu flashen. |
 | ESPHome Web fragt nach dem Flashen **nicht** nach WLAN | Nicht schlimm: Kabel abziehen, wieder anstecken, 20 s warten und das Fallback-WLAN benutzen. Die Abfrage ist nur eine Abkürzung. |
 | Flaggen kommen **nicht** an | Teste im Browser: `http://<IP>/select/flag` – kommt JSON? Dann liest SimHub die Flaggen des Spiels nicht. Prüfe in SimHub, ob das Spiel erkannt wird. |
-| **Tippen** schaltet den Turm nicht um | Das geht nur im Rennen, wenn Daten ankommen und **keine** Flagge aktiv ist. Tippen schaltet Turm → Racelogic → Uhr → Turm. Bei ganz alter Firmware fehlt die Touch-Funktion → neue Datei flashen. |
+| **Tippen** schaltet die Seite nicht um | Unten rechts = nächste, unten links = zurück; die oberen Ecken sind für den Alarm reserviert. Im Rennen gibt es alle Seiten, im Training/Qualifying nur Rev-Limiter und Uhr. Bei einer aktiven Flagge reagiert die Navigation nicht. Bei ganz alter Firmware fehlt die Touch-Funktion → neue Datei flashen. |
 | Racelogic-Sektoren bleiben **`--.---`** | Dein Spiel liefert keine aktuellen Sektorzeiten. Runde und Delta funktionieren trotzdem; die Sektoren füllen sich, sobald das Spiel sie meldet. |
 | Alles geht, aber nach Router-Neustart nicht mehr | Die IP hat sich geändert. Neue IP auf dem Display ablesen und im Plugin eintragen. |
 

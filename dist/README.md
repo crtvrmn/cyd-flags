@@ -1,7 +1,8 @@
 # Prebuilt artifacts
 
-All images are **portrait** (240×320) and built from `firmware/cyd-flags.yaml`
-with ESPHome 2026.10.2 / ESP-IDF 5.5.6.
+All images are built from `firmware/cyd-flags.yaml` with ESPHome 2026.10.2 /
+ESP-IDF 5.5.6. They boot portrait (240×320); the plugin can rotate a display to
+landscape at runtime, so the same image supports both mountings.
 
 | file | use |
 |------|-----|
@@ -13,12 +14,11 @@ with ESPHome 2026.10.2 / ESP-IDF 5.5.6.
 
 A factory flash erases the saved WiFi credentials; an OTA update does not.
 
-0.6.0 added the **features**, **wifi_ssid**, **wifi_password** and
-**wifi_connect** entities used by the plugin's page selection and WiFi
-provisioning buttons. 0.7.0 adds **multi-display support** to the plugin: one
-DLL can drive several CYDs, each with its own host, pages, brightness and WiFi.
-The firmware and HTTP API are unchanged, so 0.6.0 firmware works with the 0.7.0
-plugin. The plugin and firmware should still be kept up to date together.
+0.7.0 adds **multiple displays**, **corner navigation**, the **rev-limiter
+page**, **per-display orientation**, the **previous-lap delta bar**, and the
+**daily alarm** on the CYD. The firmware and plugin must be updated together:
+the 0.7.0 plugin sends `rev`, `delta` and `orientation`, which older firmware
+returns 404 for (flags and timing keep working, but the new pages stay empty).
 
 Verify a download with:
 

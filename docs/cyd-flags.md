@@ -1,8 +1,8 @@
 # CYD Flags — flags, clock and relative timing on Cheap Yellow Displays
 
-A two-part project that puts the current flag, a clock and a small relative
-timing tower from your sim racing game on one or more 2.8" **Cheap Yellow
-Displays** (ESP32-2432S028R):
+A two-part project that puts the current flag, a clock, a small relative
+timing tower, race logic, a rev limiter and a daily alarm from your sim racing
+game on one or more 2.8" **Cheap Yellow Displays** (ESP32-2432S028R):
 
 | part | what it is |
 |------|------------|
@@ -42,8 +42,9 @@ game ──telemetry──► SimHub ──► CydFlags plugin ──┼──HT
   This is the original board with a single micro-USB port.
 * Power and data over USB. No wiring is needed for the display: it is already
   connected to the ESP32 on the board.
-* The panel is used in **portrait** (240x320), so the USB port is on the
-  short side and the cable does not stick out sideways.
+* The panel boots in **portrait** (240x320); the SimHub plugin can rotate it to
+  **landscape** (320x240) at runtime per display, so one image fits either
+  mounting.
 * The resistive touch controller (XPT2046) is on CLK GPIO25, MOSI GPIO32,
   MISO GPIO39 and CS GPIO33; it is polled separately from the display SPI bus.
 
@@ -57,8 +58,9 @@ The firmware has a dedicated model for each variant, see
 
 ### Easiest: prebuilt binary (no ESPHome install)
 
-The repository contains ready-to-flash **portrait** images. Pick the file for
-the panel controller of your board:
+The repository contains ready-to-flash images. They boot portrait; select
+portrait or landscape per display in the plugin. Pick the file for the panel
+controller of your board:
 
 | file | board |
 |------|-------|
@@ -155,8 +157,10 @@ Edit the substitutions at the top of `firmware/cyd-flags.yaml`:
 | dual-USB CYD with ST7789V | `display_model: ESP32-2432S028-7789` |
 | dual-USB CYD with ILI9342 | `display_model: ESP32-2432S028-9342` |
 
-`display_rotation: "0"` is portrait (default). Use `"90"` for landscape, or
-`"270"` if the portrait image is upside down. If red and blue are swapped, add
+`display_rotation: "0"` is the boot default (portrait). The plugin normally
+sets portrait/landscape at runtime through the `orientation` entity. If you
+build a fixed-orientation image, `"90"` is landscape and `"270"` rotates a
+portrait image that is upside down. If red and blue are swapped, add
 `color_order: RGB` to the `display:` block (or `BGR` if the other way around).
 
 ---
@@ -206,16 +210,24 @@ keep running; an unreachable display only retries its own requests.
 
 The groups below the selector always edit the **selected display**:
 
-- **Pages on this display** — tick **Flags**, **Clock**, **Relative tower** and
-  **Race logic**. The plugin sends this list to that display's `features`
-  entity. Disabled pages disappear from its touch cycle; with nothing selected
-  the CYD shows **NO PAGE**. Flags keep priority over all pages. Timing data is
-  only sent to displays with the tower page enabled, race-logic data only to
-  displays with the logic page enabled, so switching a page off also saves
-  network traffic.
+- **Pages on this display** — tick **Flags**, **Clock**, **Relative tower**,
+  **Race logic** and **Rev limiter**. The plugin sends this list to that
+  display's `features` entity. Disabled pages disappear from its corner
+  navigation; with nothing selected the CYD shows **NO PAGE**. Flags keep
+  priority over all pages. Timing data is only sent to displays with the tower
+  page enabled, race-logic data only to displays with the logic page enabled,
+  so switching a page off also saves network traffic.
+- **Display orientation** — **Portrait (240×320)** or **Landscape (320×240)**
+  for the selected CYD. The plugin sends `orientation`; the firmware rotates at
+  runtime, so the same image works for both mountings. One orientation applies
+  to that display, not to individual pages.
 - **Race tower: show best lap** — per-display choice between the `LAST` and
   `BEST` lap columns. The plugin computes both variants and sends the selected
   one.
+- **Race tower: show delta bar** — optional bar under the tower comparing the
+  current lap with the previous lap at the same track position. Green to the
+  right means faster, orange to the left means slower; it hides on the first lap
+  and after a reset.
 - **WiFi on this display** — enter the SSID and password and press **Save WiFi
   on this display and connect**. The plugin writes `wifi_ssid`/`wifi_password`
   to that panel and presses its `wifi_connect` button, which calls ESPHome's
@@ -251,7 +263,8 @@ display, so dimming one panel does not affect another.
 
 ## What the display shows
 
-The panel is portrait (240×320). There are four screen types:
+The panel can be portrait (240×320) or landscape (320×240); the plugin
+rotates it at runtime. There are six screen types:
 
 1. **Race timing** — only during a real race session. Three rows (ahead, you,
    behind), each with position, driver name, gap and lap time. A small clock
@@ -267,17 +280,27 @@ The panel is portrait (240×320). There are four screen types:
    **green** when that sector was faster than your best lap's sector and
    **red** when it was slower. A sector that has not been completed yet shows
    `--.---` on a neutral background.
-3. **Flag** — a flag reported by the game takes over the whole screen, exactly
+3. **Rev limiter** — large gear, speed in km/h and an RPM bar. The bar turns
+   red and the page blinks when the rev limiter is reached. Available in races
+   and in practice/qualifying.
+4. **Flag** — a flag reported by the game takes over the whole screen, exactly
    like before.
-4. **Clock** — menus, practice, qualifying, and the no-link fallback show the
-   big NTP clock and the date.
+5. **Clock** — menus, practice, qualifying, and the no-link fallback show the
+   big NTP clock and the date. The top-left alarm icon opens the alarm setup.
+6. **Alarm** — a daily alarm fires once at the configured wall-clock time and
+   shows a full-screen flashing **ALARM**; any tap stops it for that day.
 
-**Touch:** during a race a tap anywhere cycles **tower → race logic → clock**;
-the next tap starts over at the tower. Taps outside a race are ignored, and an
-active flag still has priority over all pages. The touch controller (XPT2046)
-is polled on its own SPI pins; only tap detection is used, so the full panel
-works as one button and no precise calibration is needed. The page selection is
-reset to the tower when the race session ends.
+**Touch:** the panel is split by a 24 px dead cross. The **bottom-left
+quadrant** goes to the previous page, the **bottom-right quadrant** to the
+next; both wrap and skip disabled pages. The cycle is
+**tower → race logic → rev limiter → clock**, and the rev/clock pages also work
+outside a race. The **top-left quadrant on the idle clock** opens the alarm
+setup; during setup the four quadrants are +1 h / +5 min / off / save. During
+the alarm overlay any tap stops it.
+An active flag still has priority over all pages. The touch controller
+(XPT2046) is polled on its own SPI pins; the targets are large quadrants, so no
+precise calibration is needed. The page selection is reset to the tower when a
+new race session starts.
 
 ```
 ┌────────────────────────┐
@@ -310,6 +333,13 @@ lease (bottom of the clock screen, top-right during a race), then disappears. Th
 | Orange | orange | ORANGE | MEATBALL - DAMAGE |
 | no race / idle | dark | real clock (HH:MM, NTP) | date |
 | no heartbeat for 5 s | dark | real clock (amber) | NO LINK |
+
+The delta bar under the tower is computed on the PC from `CurrentLap`,
+`CurrentLapTime` and `TrackPositionPercent`: the plugin records the previous
+lap's time at each track position and interpolates the reference at your
+current position. Positive means slower, negative faster. The alarm is a local
+CYD feature; it is independent of SimHub, survives OTA/reboots, and its optional
+GPIO26 tone is silent on boards without that speaker.
 
 If several flags are reported at once, the most important one wins:
 
@@ -358,6 +388,16 @@ curl -X POST 'http://cyd-flags.local/text/game/set?value=Assetto%20Corsa%20Compe
 # race mode: RACE shows the timing tower, CLOCK shows the big clock
 curl -X POST 'http://cyd-flags.local/text/race/set?value=RACE'
 
+# pages enabled on this CYD, and its mounting orientation
+curl -X POST 'http://cyd-flags.local/text/features/set?value=flags,clock,tower,logic,rev'
+curl -X POST 'http://cyd-flags.local/text/orientation/set?value=portrait'
+
+# rev limiter: gear~speed_kmh~rpm~max_rpm~redline~rpm_percent~blink
+curl -X POST 'http://cyd-flags.local/text/rev/set?value=4~123~7800~8500~8000~92~0'
+
+# previous-lap delta: signed seconds, empty hides the bar
+curl -X POST 'http://cyd-flags.local/text/delta/set?value=-0.421'
+
 # header above the tower: LAST, BEST, LAST PIT or BEST PIT
 curl -X POST 'http://cyd-flags.local/text/lap_label/set?value=LAST'
 
@@ -372,7 +412,7 @@ curl -X POST 'http://cyd-flags.local/text/timing/set?value=6~Fabio~0.45~G~1:47.3
 # Sector colors compare with your best lap: G faster, R slower.
 curl -X POST 'http://cyd-flags.local/text/logic/set?value=1:23.456~-~-0.234~G~31.234~G~35.100~R~--.---~-'
 
-# pages: comma-separated flags,clock,tower,logic; "none" hides all pages
+# pages: comma-separated flags,clock,tower,logic,rev; "none" hides all pages
 curl -X POST 'http://cyd-flags.local/text/features/set?value=flags,clock,tower,logic'
 
 # WiFi provisioning: write credentials, then press the button. save:true puts
@@ -425,7 +465,7 @@ connection backoff, so a timeout on one panel does not delay the others.
 Build/test notes for developers:
 
 ```bash
-# pure logic tests (flag priority, name parsing, option strings)
+# pure logic tests (flags, delta tracker)
 dotnet run --project tests
 
 # rebuild the plugin on Linux (Roslyn + net48 refs + SimHub SDK DLLs)
@@ -446,9 +486,11 @@ src/CydFlags/FlagReader.cs       StatusDataBase flag reads (reflection fallback)
 src/CydFlags/FlagModel.cs        priority selection / name parsing (tested)
 src/CydFlags/TimingBuilder.cs    relative tower payload
 src/CydFlags/RaceLogicBuilder.cs lap / sector / delta payload
+src/CydFlags/RevBuilder.cs        rev-limiter payload
+src/CydFlags/DeltaTracker.cs      previous-lap delta by track position
 src/CydFlags/DeviceClient.cs     tiny POST client for ESPHome's web server
 src/CydFlags/UI/                 settings panel (code-only WPF)
-tests/                           pure C# tests for FlagModel
+tests/                           pure C# tests (FlagModel + DeltaTracker)
 dist/CydFlags.dll                prebuilt plugin
 docs/cyd-flags.md                this file
 ```

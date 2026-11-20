@@ -13,7 +13,10 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="CydFlagsTests.cs" />
+    <Compile Include="DeltaTrackerTests.cs" />
+    <Compile Include="GameReaderCommonStub.cs" />
     <Compile Include="../src/CydFlags/FlagModel.cs" Link="FlagModel.cs" />
+    <Compile Include="../src/CydFlags/DeltaTracker.cs" Link="DeltaTracker.cs" />
   </ItemGroup>
 
 </Project>
