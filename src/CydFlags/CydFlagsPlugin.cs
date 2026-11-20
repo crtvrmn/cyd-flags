@@ -24,7 +24,7 @@ namespace CydFlags
     [PluginName("CYD Flags")]
     public class CydFlagsPlugin : IPlugin, IDataPlugin, IWPFSettingsV2
     {
-        public const string Version = "0.7.5";
+        public const string Version = "0.7.6";
 
         public CydFlagsSettings Settings;
 
@@ -922,7 +922,12 @@ namespace CydFlags
 
         private static bool SendRealtimeHeartbeat(DeviceState state, int counter)
         {
-            return state.Udp.SendHeartbeat(counter) || state.Client.SendHeartbeat(counter);
+            // Always send the HTTP heartbeat too: it is tiny, works with older
+            // firmware that does not know UDP yet, and keeps the display's
+            // "NO SIMHUB" status correct when UDP is blocked by a firewall.
+            bool udp = state.Udp.SendHeartbeat(counter);
+            bool http = state.Client.SendHeartbeat(counter);
+            return udp || http;
         }
 
         private static bool SendRealtime(DeviceState state, string kind, string payload)

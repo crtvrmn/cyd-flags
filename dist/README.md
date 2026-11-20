@@ -10,11 +10,11 @@ landscape at runtime, so the same image supports both mountings.
 | `cyd-flags-portrait-7789.factory.bin` | first USB flash, dual-USB CYD (ST7789V) |
 | `cyd-flags-portrait-9342.factory.bin` | first USB flash, dual-USB CYD (ILI9342) |
 | `*.ota.bin` | wireless update of the matching panel variant |
-| `CydFlags.dll` | SimHub plugin 0.7.5, copy next to `SimHubWPF.exe` |
+| `CydFlags.dll` | SimHub plugin 0.7.6, copy next to `SimHubWPF.exe` |
 
 A factory flash erases the saved WiFi credentials; an OTA update does not.
 
-0.7.5 moves realtime flags, game, tower, rev, logic, delta and heartbeat to UDP 18512 (HTTP only for configuration) so the tower data updates at 20 Hz; 0.7.4 makes the rev-limiter page use partial redraws at 20 Hz; 0.7.3 adds the global *Only show tower/logic/delta during a race* option, off by default, so the tower, race logic and delta bar also work in practice and qualifying; 0.7.2 corrected the mirrored touch X axis (alarm quadrants and corner navigation). 0.7.1 changes the connection
+0.7.6 adds an eight-second boot splash with the firmware version and always sends the HTTP heartbeat as a fallback, so `NO SIMHUB` does not appear when UDP is blocked; 0.7.5 moves realtime flags, game, tower, rev, logic, delta and heartbeat to UDP 18512 (HTTP only for configuration) so the tower data updates at 20 Hz; 0.7.4 makes the rev-limiter page use partial redraws at 20 Hz; 0.7.3 adds the global *Only show tower/logic/delta during a race* option, off by default, so the tower, race logic and delta bar also work in practice and qualifying; 0.7.2 corrected the mirrored touch X axis (alarm quadrants and corner navigation). 0.7.1 changes the connection
 status to **NO WIFI** / **NO SIMHUB** (no more `NO LINK`); 0.7.0 added
 **multiple displays**, **corner navigation**, the
 **rev-limiter page**, **per-display orientation**, the **previous-lap delta bar**,

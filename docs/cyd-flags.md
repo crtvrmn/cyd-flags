@@ -14,8 +14,10 @@ In a real race session it shows the car ahead, your car and the car behind with
 position, driver name, gap and lap time — plus a small clock in the top-left.
 The header says **LAST** or **BEST** (selectable per display in the plugin) and
 turns into **LAST PIT** while you are in the pit lane.
-When a flag is active it still takes over the whole screen. There is no MQTT
-broker, no Home Assistant and no PC-side Python bridge. Each display listens
+When a flag is active it still takes over the whole screen. At boot the panel
+shows a short `CYD FLAGS` splash with the firmware version for eight seconds,
+so you can confirm which image is running. There is no MQTT broker, no Home
+Assistant and no PC-side Python bridge. Each display listens
 for realtime updates on **UDP port 18512** and runs a small HTTP server on
 port 80 for configuration; SimHub talks to both directly over your LAN.
 

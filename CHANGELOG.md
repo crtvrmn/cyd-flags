@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.6
+
+* **Boot splash with firmware version.** The display shows `CYD FLAGS` and the
+  firmware version for eight seconds after every boot, then switches to the
+  normal flag/clock/race screen. This makes it easy to check which image is
+  actually running.
+* **Fixed `NO SIMHUB` after 0.7.5.** The plugin now sends the HTTP heartbeat in
+  addition to the UDP heartbeat. If UDP is blocked by a firewall, the host name
+  does not resolve, or the display still runs older firmware without the UDP
+  receiver, the link stays alive over HTTP. Both plugin and firmware 0.7.6 are
+  recommended; the plugin alone also fixes the link status with older firmware.
+
 ## 0.7.5
 
 * **UDP fast path.** Realtime flags, game name, tower, rev, race-logic, delta

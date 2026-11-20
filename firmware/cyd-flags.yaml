@@ -29,6 +29,8 @@ substitutions:
   # Optional alarm tone pin (GPIO26 has the small speaker on many CYD boards).
   # On boards without a speaker this is simply silent.
   alarm_sound_pin: GPIO26
+  # Shown on the boot splash; update together with the plugin version.
+  firmware_version: "0.7.6"
 
 esphome:
   name: ${device_name}
@@ -43,6 +45,8 @@ esphome:
         - output.set_level:
             id: backlight
             level: 0.9
+        - lambda: |-
+            id(boot_until) = millis() + 8000;
 
 esp32:
   board: esp32dev
@@ -153,6 +157,19 @@ display:
       const int W = it.get_width();
       const int H = it.get_height();
       const bool portrait = H > W;
+
+      // Boot splash: show the firmware version on every start. After eight
+      // seconds the normal flag/clock/race screen takes over.
+      if (millis() < id(boot_until)) {
+        id(rev_painted) = false;
+        id(rev_band) = 0;
+        it.fill(Color(8, 8, 12));
+        it.print(W / 2, H / 2 - 34, id(font_sub), Color(200, 205, 215),
+                 TextAlign::CENTER, "CYD FLAGS");
+        it.print(W / 2, H / 2 + 18, id(font_hero), Color(255, 205, 0),
+                 TextAlign::CENTER, "v${firmware_version}");
+        return;
+      }
 
       const bool link = id(link_seen) && (millis() - id(link_last_ms) < 5000);
       // WiFi and SimHub are reported separately: a missing heartbeat has a
@@ -819,7 +836,7 @@ font:
   - file: "fonts/DejaVuSansCondensed-Bold.ttf"
     id: font_hero
     size: 62
-    glyphs: "ABCDEFGHIKLMNORSTUWY 0123456789:-"
+    glyphs: "ABCDEFGHIKLMNORSTUWY 0123456789:-v"
   # Portrait flag names: 39 px keeps CHECKERED inside 240 px.
   - file: "fonts/DejaVuSansCondensed-Bold.ttf"
     id: font_hero_p
@@ -893,6 +910,10 @@ globals:
     restore_value: false
     initial_value: "false"
   - id: link_last_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  - id: boot_until
     type: uint32_t
     restore_value: false
     initial_value: "0"
