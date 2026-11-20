@@ -24,7 +24,7 @@ namespace CydFlags
     [PluginName("CYD Flags")]
     public class CydFlagsPlugin : IPlugin, IDataPlugin, IWPFSettingsV2
     {
-        public const string Version = "0.7.12";
+        public const string Version = "0.8.0";
 
         public CydFlagsSettings Settings;
 
@@ -40,6 +40,7 @@ namespace CydFlags
         private string _logic = string.Empty;
         private string _delta = string.Empty;
         private string _rev = string.Empty;
+        private string _sabt = string.Empty;
         private string _lapLabelLast = "LAST";
         private string _lapLabelBest = "BEST";
 
@@ -60,6 +61,7 @@ namespace CydFlags
         private DateTime _lastTimingBuildUtc = NoTiming;
         private DateTime _lastLogicBuildUtc = NoTiming;
         private DateTime _lastRevBuildUtc = NoTiming;
+        private DateTime _lastSabtBuildUtc = NoTiming;
         private readonly DeltaTracker _deltaTracker = new DeltaTracker();
 
         // "Test flags" override: while set, DataUpdate ignores the game and
@@ -247,6 +249,7 @@ namespace CydFlags
 
             try
             {
+                UpdateSabt(pluginManager);
                 if (!Settings.Enabled)
                 {
                     SetGameRunning(false);
@@ -897,6 +900,25 @@ namespace CydFlags
                 LogRequest(state, "rev cleared");
             }
 
+            if (device.PageSabt && !string.IsNullOrEmpty(shared.Sabt))
+            {
+                bool sabtDue = shared.Sabt != state.LastSentSabt
+                    || (now - state.LastSabtSentUtc).TotalSeconds >= 2;
+                if (sabtDue)
+                {
+                    if (!SendRealtime(state, "sabt", shared.Sabt)) { Fail(state, now); return; }
+                    state.LastSentSabt = shared.Sabt;
+                    state.LastSabtSentUtc = now;
+                    LogRequest(state, "sabt " + shared.Sabt);
+                }
+            }
+            else if (state.LastSentSabt != null)
+            {
+                if (!SendRealtime(state, "sabt", string.Empty)) { Fail(state, now); return; }
+                state.LastSentSabt = null;
+                LogRequest(state, "sabt cleared");
+            }
+
             // When "dim without game" is enabled, the backlight target is 0
             // until SimHub reports a running game; the slider value is then
             // restored on game start.
@@ -998,6 +1020,7 @@ namespace CydFlags
                 case "logic": udp = state.Udp.SendLogic(payload); break;
                 case "rev": udp = state.Udp.SendRev(payload); break;
                 case "delta": udp = state.Udp.SendDelta(payload); break;
+                case "sabt": udp = state.Udp.SendSabt(payload); break;
                 default: return false;
             }
 
@@ -1021,6 +1044,7 @@ namespace CydFlags
                 case "timing": http = state.Client.SendTiming(payload); break;
                 case "logic": http = state.Client.SendLogic(payload); break;
                 case "rev": http = state.Client.SendRev(payload); break;
+                case "sabt": http = state.Client.SendSabt(payload); break;
                 default: http = state.Client.SendDelta(payload); break;
             }
             return udp || http;
@@ -1107,6 +1131,37 @@ namespace CydFlags
             lock (_stateLock) _rev = rev ?? string.Empty;
         }
 
+        private void SetSabt(string sabt)
+        {
+            lock (_stateLock) _sabt = sabt ?? string.Empty;
+        }
+
+        private void UpdateSabt(PluginManager pluginManager)
+        {
+            if (Settings == null || !Settings.Enabled)
+            {
+                SetSabt(string.Empty);
+                return;
+            }
+
+            bool anySabt = false;
+            foreach (CydFlagsDeviceSettings device in DeviceSnapshot())
+            {
+                if (device != null && device.Enabled && device.PageSabt) anySabt = true;
+            }
+            if (!anySabt)
+            {
+                SetSabt(string.Empty);
+                _lastSabtBuildUtc = NoTiming;
+                return;
+            }
+
+            DateTime now = DateTime.UtcNow;
+            if ((now - _lastSabtBuildUtc).TotalMilliseconds < 500) return;
+            SetSabt(SabtBuilder.Build(pluginManager));
+            _lastSabtBuildUtc = now;
+        }
+
         private void SetDelta(string delta)
         {
             lock (_stateLock) _delta = delta ?? string.Empty;
@@ -1126,6 +1181,7 @@ namespace CydFlags
                 state.Logic = _logic;
                 state.Rev = _rev;
                 state.Delta = _delta;
+                state.Sabt = _sabt;
                 state.LapLabelLast = _lapLabelLast;
                 state.LapLabelBest = _lapLabelBest;
             }
@@ -1150,6 +1206,7 @@ namespace CydFlags
             public string LastSentFeatures;
             public string LastSentRev;
             public string LastSentDelta;
+            public string LastSentSabt;
             public string LastSentOrientation;
 
             public string HostKey;
@@ -1166,6 +1223,7 @@ namespace CydFlags
             public DateTime LastFeaturesSentUtc;
             public DateTime LastRevSentUtc;
             public DateTime LastDeltaSentUtc;
+            public DateTime LastSabtSentUtc;
             public DateTime LastOrientationSentUtc;
 
             public DateTime BackoffUntilUtc;
@@ -1204,6 +1262,7 @@ namespace CydFlags
             public string Logic;
             public string Rev;
             public string Delta;
+            public string Sabt;
             public string LapLabelLast;
             public string LapLabelBest;
         }
@@ -1313,6 +1372,7 @@ namespace CydFlags
             state.LastSentLapLabel = null;
             state.LastSentRev = null;
             state.LastSentDelta = null;
+            state.LastSentSabt = null;
             state.LastSentOrientation = null;
             state.LastUdpCheckUtc = DateTime.MinValue;
             state.UdpRxCountAtCheck = -1;

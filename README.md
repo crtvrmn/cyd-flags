@@ -1,7 +1,7 @@
 # CYD Flags
 
-Flags, a clock, a relative race tower, a race-logic page, a rev-limiter page
-and a daily alarm clock on one or more **Cheap Yellow Displays**
+Flags, a clock, a relative race tower, a race-logic page, a rev-limiter page,
+a SABT belt-tensioner page and a daily alarm clock on one or more **Cheap Yellow Displays**
 (ESP32-2432S028), driven directly by **SimHub**.
 
 No Home Assistant, no MQTT broker and no PC-side Python bridge: each ESP32 runs
@@ -19,9 +19,10 @@ delaying the others.
 | situation | screen |
 |-----------|--------|
 | race session | relative tower: car ahead, you, car behind — position, name, lap time and a green + / red − trend disc; optional live delta-to-previous-lap bar |
-| race session, bottom-right corner | next page: race logic / rev limiter / clock; bottom-left goes back |
+| race session, bottom-right corner | next page: race logic / rev limiter / SABT / clock; bottom-left goes back |
 | race logic | delta to best and sector times (green/red vs. your best) |
 | rev limiter | large gear and km/h only, updated at 33 Hz; also in practice/qualifying |
+| SABT | belt-tensioner state and idle/resting/maximum tension from the Simple Active Belt Tensioner plugin |
 | menus / practice / qualifying | large clock and date, with a small alarm shortcut top-left |
 | alarm time reached | full-screen flashing ALARM; tap anywhere to stop |
 | any flag | full-screen flag (red, yellow, blue, white, checkered, black, orange…) |
@@ -59,9 +60,9 @@ game ──telemetry──► SimHub ──► CydFlags plugin ──┼──UD
 2. **Install the plugin.** Copy [`dist/CydFlags.dll`](dist/CydFlags.dll) next to
    `SimHubWPF.exe` (usually `C:\Program Files (x86)\SimHub`), then restart
    SimHub and enable **CYD Flags** under **Plugins**.
-3. **Connect.** Enter the display's hostname (`cyd-flags.local`) or IP address
-   in the plugin settings and press **Test connection**. For more displays use
-   **Add device** and give each one its own host or IP.
+3. **Connect.** Select the display card, enter its hostname (`cyd-flags.local`)
+   or IP address and press **Test connection**. For more displays use
+   **Add display** and give each one its own host or IP. Ports are automatic.
 4. **Drive.** The plugin sends flag, game, race mode, timing, race logic,
    lap-label and heartbeat updates to every enabled display automatically.
 
@@ -71,7 +72,7 @@ troubleshooting: [ANLEITUNG.md](ANLEITUNG.md).
 From the plugin you can also:
 
 - **Choose pages per display** — flags only, clock only, tower, race logic,
-  rev limiter, or any combination. Disabled pages disappear from that
+  rev limiter, SABT, or any combination. Disabled pages disappear from that
   display's corner navigation and the ESP stores the choice. By default the
   tower, race logic and delta also work in practice/qualifying; a global
   checkbox restricts them to races and keeps the big clock elsewhere.
@@ -140,6 +141,7 @@ src/CydFlags/                    SimHub plugin (C#, .NET Framework 4.8)
   TimingBuilder.cs               relative tower payload
   RaceLogicBuilder.cs            lap/sector/delta payload
   RevBuilder.cs                  gear/speed payload
+  SabtBuilder.cs                 SABT belt-tensioner payload
   DeltaTracker.cs                previous-lap delta by track position
   DeviceClient.cs                POST client for configuration
   UdpLink.cs                     fast realtime sender (one datagram per value)
@@ -237,9 +239,10 @@ POST /text/timing/set?value=...         # position~name~trend~trendcolor~lap~lap
 POST /text/logic/set?value=...          # lap~lapcolor~delta~deltacolor~s1~...~s3color
 POST /text/lap_label/set?value=LAST     # LAST / BEST / LAST PIT / BEST PIT
 POST /text/rev/set?value=4~123~7800~8500~8000~92~0  # gear/speed drawn
+POST /text/sabt/set?value=1~32.5~40.0~75.0  # enabled~idle~resting~maximum
 POST /text/delta/set?value=-0.421       # signed seconds, empty hides
 POST /text/orientation/set?value=portrait  # or landscape
-POST /text/features/set?value=flags,clock,tower,logic,rev  # or none
+POST /text/features/set?value=flags,clock,tower,logic,rev,sabt  # or none
 POST /number/heartbeat/set?value=123
 POST /number/brightness/set?value=90
 POST /text/wifi_ssid/set?value=MyNetwork
@@ -252,7 +255,7 @@ POSTs the applicable parts to each enabled display. Timing is skipped for a
 display whose tower page is disabled and race logic for one without the logic
 page. Heartbeats and brightness are sent per display, so a disconnected panel
 only backs off itself. The `features`, `wifi_*`, `rev`, `delta` and `orientation` endpoints belong
-to firmware 0.7.0 or newer.
+to firmware 0.8.0 or newer.
 
 A heartbeat younger than 5 seconds marks the display as linked. Flags sent
 through the web UI alone disappear after 5 seconds; the SimHub plugin sends a

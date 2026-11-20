@@ -1,7 +1,7 @@
 # CYD Flags — flags, clock and relative timing on Cheap Yellow Displays
 
 A two-part project that puts the current flag, a clock, a small relative
-timing tower, race logic, a rev limiter and a daily alarm from your sim racing
+timing tower, race logic, a rev limiter, SABT belt-tensioner settings and a daily alarm from your sim racing
 game on one or more 2.8" **Cheap Yellow Displays** (ESP32-2432S028R):
 
 | part | what it is |
@@ -197,31 +197,33 @@ settings panel is built in code (no XAML), so a plain C# compiler is enough.
 ### Configure it
 
 1. SimHub → **Settings → Plugins → CYD Flags**.
-2. The **Displays** group lists every configured panel. A fresh installation
-   starts with one entry, **Display 1**. Upgrading from 0.6.0 migrates the old
-   single-display host, port, pages and brightness into that same entry, so the
-   first display keeps working unchanged.
-3. Pick an entry, set **Host or IP** to `cyd-flags.local` or the display's IP,
-   leave **Port** at `80`, and tick **Enable this display**.
+2. The **Displays** group shows every configured panel as a card. A fresh
+   installation starts with one entry, **Display 1**. Upgrading from 0.6.0
+   migrates the old single-display host, port, pages and brightness into that
+   same entry, so the first display keeps working unchanged.
+3. Click the card, set **Host or IP** to `cyd-flags.local` or the display's IP,
+   and tick **Enable this display**. Ports are handled internally; there is no
+   port field to configure.
 4. Press **Test connection**. The status line turns green and the selected CYD
    should show **NO FLAG** (or the current flag, if a game is running).
-5. Press **Add device** for each additional panel, then select the new entry and
-   give it its own host/IP. **Remove device** deletes the selected entry, but the
-   last remaining display cannot be removed.
+5. Press **Add display** for each additional panel, click its card and give it
+   its own host/IP. **Remove selected** deletes the selected entry, but the last
+   remaining display cannot be removed.
 
-The status line and the SimHub properties follow the display selected in the
-dropdown, so **Last reply** and **error** describe that panel. The other panels
+The status line and the SimHub properties follow the selected card, so **Last
+reply** and **error** describe that panel. The other panels
 keep running; an unreachable display only retries its own requests.
 
 ### Pages, WiFi and flag tests
 
-The groups below the selector always edit the **selected display**:
+The groups below the cards always edit the **selected display**:
 
 - **Pages on this display** — tick **Flags**, **Clock**, **Relative tower**,
-  **Race logic** and **Rev limiter**. The plugin sends this list to that
+  **Race logic**, **Rev limiter** and **SABT**. The plugin sends this list to that
   display's `features` entity. Disabled pages disappear from its corner
   navigation; with nothing selected the CYD shows **NO PAGE**. Flags keep
-  priority over all pages. Timing data is only sent to displays with the tower
+  priority over all pages. SABT shows the belt-tensioner state from the
+  **Simple Active Belt Tensioner** SimHub plugin. Timing data is only sent to displays with the tower
   page enabled, race-logic data only to displays with the logic page enabled,
   so switching a page off also saves network traffic.
 - **Only show tower/logic/delta during a race** — global option, unchecked by
@@ -246,6 +248,8 @@ The groups below the selector always edit the **selected display**:
   `wifi.configure` with `save: true`. Credentials are stored in the ESP32's NVS,
   so they survive OTA updates and power cycles. A full USB/**factory** flash
   still erases NVS. The password is never written to the plugin settings file.
+- **SABT page** — the checkbox **SABT (belt tensioner settings)** enables the
+  page for this display.
 - **Test the flags** — choose a flag and press **Show on all displays for 10
   seconds**. This overrides the game for ten seconds on every enabled display
   (the panels brighten even if idle dimming is active), then normal SimHub data
@@ -276,7 +280,7 @@ display, so dimming one panel does not affect another.
 ## What the display shows
 
 The panel can be portrait (240×320) or landscape (320×240); the plugin
-rotates it at runtime. There are six screen types:
+rotates it at runtime. There are seven screen types:
 
 1. **Race timing** — only during a real race session. Three rows (ahead, you,
    behind), each with position, driver name, lap time and a trend disc. A small
@@ -300,17 +304,21 @@ rotates it at runtime. There are six screen types:
    are transferred; the plugin builds it at 50 Hz. The tower/logic pages use
    80 ms, the clock/flag pages 300 ms. Available in races
    and in practice/qualifying.
-4. **Flag** — a flag reported by the game takes over the whole screen, exactly
+4. **SABT** — reads the SimHub properties of the Simple Active Belt Tensioner
+   plugin (`SABT.IsEnabled`, `SABT.IdleTension`, `SABT.RestingTension`,
+   `SABT.MaximumTension`) and shows **ACTIVE**/**OFF** plus the three tension
+   values. The page works in the menus too, because it does not need game data.
+5. **Flag** — a flag reported by the game takes over the whole screen, exactly
    like before.
-5. **Clock** — menus, practice, qualifying, and the no-link fallback show the
+6. **Clock** — menus, practice, qualifying, and the no-link fallback show the
    big NTP clock and the date. The top-left alarm icon opens the alarm setup.
-6. **Alarm** — a daily alarm fires once at the configured wall-clock time and
+7. **Alarm** — a daily alarm fires once at the configured wall-clock time and
    shows a full-screen flashing **ALARM**; any tap stops it for that day.
 
 **Touch:** the panel is split by a 24 px dead cross. The **bottom-left
 quadrant** goes to the previous page, the **bottom-right quadrant** to the
 next; both wrap and skip disabled pages. The cycle is
-**tower → race logic → rev limiter → clock**. By default all pages also work
+**tower → race logic → rev limiter → SABT → clock**. By default all pages also work
 outside a race; with the race-pages option checked, practice/qualifying show
 only rev limiter and clock. The **top-left quadrant on the idle clock** opens the alarm
 setup; during setup the four quadrants are +1 h / +5 min / off / save. During
@@ -437,11 +445,14 @@ curl -X POST 'http://cyd-flags.local/text/game/set?value=Assetto%20Corsa%20Compe
 curl -X POST 'http://cyd-flags.local/text/race/set?value=RACE'
 
 # pages enabled on this CYD, and its mounting orientation
-curl -X POST 'http://cyd-flags.local/text/features/set?value=flags,clock,tower,logic,rev'
+curl -X POST 'http://cyd-flags.local/text/features/set?value=flags,clock,tower,logic,rev,sabt'
 curl -X POST 'http://cyd-flags.local/text/orientation/set?value=portrait'
 
 # rev limiter: gear~speed_kmh~... (only the first two fields are drawn)
 curl -X POST 'http://cyd-flags.local/text/rev/set?value=4~123~7800~8500~8000~92~0'
+
+# SABT: enabled~idle~resting~maximum
+curl -X POST 'http://cyd-flags.local/text/sabt/set?value=1~32.5~40.0~75.0'
 
 # previous-lap delta: signed seconds, empty hides the bar
 curl -X POST 'http://cyd-flags.local/text/delta/set?value=-0.421'
@@ -462,7 +473,7 @@ curl -X POST 'http://cyd-flags.local/text/timing/set?value=6~Fabio~%2B~G~1:47.38
 # Sector colors compare with your best lap: G faster, R slower.
 curl -X POST 'http://cyd-flags.local/text/logic/set?value=1:23.456~-~-0.234~G~31.234~G~35.100~R~--.---~-'
 
-# pages: comma-separated flags,clock,tower,logic,rev; "none" hides all pages
+# pages: comma-separated flags,clock,tower,logic,rev,sabt; "none" hides all pages
 curl -X POST 'http://cyd-flags.local/text/features/set?value=flags,clock,tower,logic'
 
 # WiFi provisioning: write credentials, then press the button. save:true puts
@@ -482,7 +493,7 @@ Read state with `GET /select/flag`, `GET /text/game`, etc. ESPHome only accepts
 **POST** for the `set` action.
 
 The entity names (`flag`, `game`, `race`, `timing`, `logic`, `lap_label`,
-`features`, `wifi_ssid`, `wifi_password`, `wifi_connect`, `heartbeat`,
+`features`, `wifi_ssid`, `wifi_password`, `wifi_connect`, `sabt`, `heartbeat`,
 `brightness`) are matched **exactly** by ESPHome's web server. If you rename an
 entity, update the plugin (see `DeviceClient.cs`) and these URLs too.
 
@@ -500,8 +511,8 @@ connection backoff, so a timeout on one panel does not delay the others.
 |---------|-------------|
 | **NO WIFI** on the display | The ESP32 has no station association. Check the router/SSID, move closer, or re-enter WiFi in the plugin. `WIFI: SETUP AP` means the fallback AP is active: connect to `CYD Flags fallback` and open `http://192.168.4.1`. |
 | **NO SIMHUB** on the display | WiFi is fine but no heartbeat reaches the CYD. Start SimHub, select the display in the plugin, press **Test connection**, and check host/IP. The plugin backs off briefly after failures but keeps retrying. |
-| Only **one of several** displays shows NO SIMHUB | Select that display in the **Displays** dropdown and check its host/IP. The other displays keep updating; each panel has its own connection and backoff. A stale display entry can be removed with **Remove device**. |
-| Plugin status says **404** | Entity name mismatch. Only rename entities if you also change `DeviceClient.cs`; the default names are `flag`, `game`, `race`, `timing`, `logic`, `lap_label`, `features`, `wifi_ssid`, `wifi_password`, `wifi_connect`, `heartbeat`, `brightness`. |
+| Only **one of several** displays shows NO SIMHUB | Select that display card and check its host/IP. The other displays keep updating; each panel has its own connection and backoff. A stale display entry can be removed with **Remove selected**. |
+| Plugin status says **404** | Entity name mismatch. Only rename entities if you also change `DeviceClient.cs`; the default names are `flag`, `game`, `race`, `timing`, `logic`, `lap_label`, `features`, `wifi_ssid`, `wifi_password`, `wifi_connect`, `sabt`, `heartbeat`, `brightness`. |
 | **Page list / WiFi save does nothing** | The display is running an older firmware before 0.6.0. Flash the current factory/OTA image; the plugin then finds the `features` and `wifi_*` entities. |
 | **WiFi is gone after an update** | A **factory** USB flash erases NVS. Use the `.ota.bin` for wireless updates, or enter the credentials again with **Save WiFi on display**. |
 | Race-logic sectors stay `--.---` | The game does not expose current sector times for the player. The page still shows lap and delta; sectors fill in as the game reports them. |

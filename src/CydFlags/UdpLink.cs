@@ -38,6 +38,7 @@ namespace CydFlags
         public bool SendLogic(string payload) { return Send('l', payload); }
         public bool SendRev(string payload) { return Send('r', payload); }
         public bool SendDelta(string payload) { return Send('d', payload); }
+        public bool SendSabt(string payload) { return Send('s', payload); }
 
         public bool SendHeartbeat(int counter)
         {

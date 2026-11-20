@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.0
+
+* **SABT page.** New page shows the Simple Active Belt Tensioner state
+  (**ACTIVE** / **OFF**) and the idle, resting and maximum tension values. The
+  plugin reads `SABT.IsEnabled`, `SABT.IdleTension`, `SABT.RestingTension` and
+  `SABT.MaximumTension`; SABT is optional, the page only appears when the
+  properties are available and the page is enabled.
+* **Cleaner plugin UI.** The heartbeat, minimum-gap, HTTP/UDP port and request
+  log fields are gone — the plugin manages those values. Displays are shown as
+  clickable cards with name, host and enabled state, so several panels cannot be
+  confused. Add/remove and **Open display web UI** remain.
+* **SABT page checkbox** per display; feature token `sabt`, entity `sabt`.
+* Plugin and firmware 0.8.0.
+
 ## 0.7.12
 
 * **Race tower shows a trend disc instead of a gap.** A green **+** means you

@@ -73,6 +73,7 @@
     <Compile Include="TimingBuilder.cs" />
     <Compile Include="RaceLogicBuilder.cs" />
     <Compile Include="RevBuilder.cs" />
+    <Compile Include="SabtBuilder.cs" />
     <Compile Include="DeltaTracker.cs" />
     <Compile Include="UdpLink.cs" />
     <Compile Include="UI\CydFlagsSettingsView.cs" />

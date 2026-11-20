@@ -14,9 +14,10 @@ Am Ende zeigt dein „Cheap Yellow Display“ (CYD):
 - außerhalb des Rennens (Menü, Training, Qualifying): **die echte Uhrzeit**,
 - wenn eine Flagge kommt: die Flagge groß auf dem ganzen Bildschirm,
 - eine **Rev-Limiter-Seite** mit großem Gang und km/h, ohne Leiste, sehr schnell
+- eine **SABT-Seite** mit Status und den drei Zugwerten des Simple Active Belt Tensioner
   aktualisiert (auch im Training/Qualifying),
 - **Tippen** auf die unteren Ecken: unten rechts = nächste Seite, unten links =
-  zurück. Reihenfolge: Turm → Racelogic → Rev-Limiter → Uhr → Turm. Im
+  zurück. Reihenfolge: Turm → Racelogic → Rev-Limiter → SABT → Uhr → Turm. Im
   standardmäßig gibt es alle Seiten auch im Training/Qualifying; mit der
   Race-Pages-Option nur Rev-Limiter und Uhr. Flaggen haben Vorrang,
 - eine **Alarm-Uhr**: oben links auf der Uhr tippen und mit den vier Ecken
@@ -198,20 +199,19 @@ die DLL löschen und noch einmal kopieren.
 1. Klicke links auf **CYD Flags**.
 2. Setze den Haken bei **„Enable CYD Flags (all displays)“**.
 3. Im Bereich **Displays** steht beim ersten Start bereits **Display 1**.
-   Wähle es im Auswahlfeld aus.
+   Klicke auf die Karte, um sie auszuwählen.
 4. Trage bei **„Host or IP“** die IP-Adresse ein, die das Display in den ersten
    15 Sekunden nach dem Start unten anzeigt, z. B. `192.168.1.42`.
-5. **Port** bleibt `80`, setze den Haken bei **„Enable this display“**.
+5. Setze den Haken bei **„Enable this display“**. Um Ports und Timing musst du dich nicht kümmern.
 6. Klicke auf **„Test connection (all displays)“**.
 
 Oben in den Einstellungen muss jetzt **LINK online** (grün) stehen. Die
-Statuszeile bezieht sich immer auf das Display, das im Auswahlfeld ausgewählt
-ist.
+Statuszeile bezieht sich immer auf das Display, dessen Karte ausgewählt ist.
 
-**Weiteres Display hinzufügen:** Klicke auf **„Add device“**, wähle den neuen
-Eintrag (**Display 2**) aus und trage dessen eigene IP-Adresse ein. Jedes Display
+**Weiteres Display hinzufügen:** Klicke auf **„Add display“**, klicke auf die
+neue Karte (**Display 2**) und trage deren eigene IP-Adresse ein. Jedes Display
 bekommt dieselben Renndaten, aber eigene Seiten, Helligkeit und WLAN-Daten.
-**„Remove device“** löscht das ausgewählte Display; das letzte verbliebene
+**„Remove selected“** löscht die ausgewählte Karte; das letzte verbliebene
 Display kann nicht gelöscht werden.
 
 Bei einem Update von Version 0.6.0 werden die alten Einzel-Display-Einstellungen
@@ -225,7 +225,7 @@ zeigt das Display seine IP nicht an.
 
 Wenn **offline** steht:
 
-- Ist das richtige Display im Auswahlfeld gewählt?
+- Ist die richtige Display-Karte ausgewählt?
 - Ist das Display eingeschaltet und im selben WLAN wie der PC?
 - Stimmt die IP? Sie kann sich nach einem Router-Neustart ändern.
 - Funktioniert `http://<IP>` im Browser des PCs? Dann ist das Display erreichbar.
@@ -236,11 +236,11 @@ es weiter, die übrigen Displays werden normal aktualisiert.
 
 ### 2.6 Seiten auswählen, WLAN speichern, Flaggen testen
 
-Diese Bereiche bearbeiten immer das im Auswahlfeld gewählte Display:
+Diese Bereiche bearbeiten immer das auf der ausgewählten Karte gewählte Display:
 
 - **Pages on this display:** Hake an, was dieses Display können soll:
-  **Flags**, **Clock**, **Relative tower**, **Race logic** und **Rev
-  limiter**. Was du abwählst, wird bei der Ecken-Navigation übersprungen. Wenn
+  **Flags**, **Clock**, **Relative tower**, **Race logic**, **Rev limiter**
+  und **SABT**. Was du abwählst, wird bei der Ecken-Navigation übersprungen. Wenn
   du alles abwählst, zeigt das Display **NO PAGE**. Flaggen haben weiterhin
   Vorrang.
 - **Display orientation:** **Portrait (240×320)** oder **Landscape (320×240)**
@@ -281,12 +281,12 @@ relativen Fahrer zu allen aktivierten Displays.
   Im Plugin kannst du zwischen **LAST** (letzte Runde) und **BEST** (beste
   Runde) umschalten. Bist du in der Boxengasse, steht oben zusätzlich **PIT**.
   **Tippen** auf die unteren Ecken schaltet weiter: **Turm → Racelogic →
-  Rev-Limiter → große Uhr → Turm**. Standardmäßig funktionieren alle Seiten
+  Rev-Limiter → SABT → große Uhr → Turm**. Standardmäßig funktionieren alle Seiten
   auch im Training/Qualifying; mit *Only show tower/logic/delta during a race*
   dort nur Rev-Limiter und Uhr. Eine Flagge hat immer Vorrang.
   Die Racelogic-Seite zeigt das Delta zur persönlichen Bestzeit und die drei
   Sektoren (grün = schneller, rot = langsamer als deine Bestzeit; noch nicht
-  gefahrene Sektoren bleiben neutral). Der Rev-Limiter zeigt nur Gang und km/h. Die Uhrzeit
+  gefahrene Sektoren bleiben neutral). Der Rev-Limiter zeigt nur Gang und km/h, die SABT-Seite Status und Zugwerte. Die Uhrzeit
   oben links ist im Rennen klein; außerhalb groß mit Datum. Oben links auf der
   Uhr öffnest du den **Alarm**: vier Ecken = Stunde +1, Minute +5, aus, speichern.
 

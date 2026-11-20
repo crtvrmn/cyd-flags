@@ -89,6 +89,11 @@ namespace CydFlags
             return Post("text/rev/set?value=" + Uri.EscapeDataString(payload ?? string.Empty));
         }
 
+        public bool SendSabt(string payload)
+        {
+            return Post("text/sabt/set?value=" + Uri.EscapeDataString(payload ?? string.Empty));
+        }
+
         public bool SendOrientation(string orientation)
         {
             return Post("text/orientation/set?value=" + Uri.EscapeDataString(orientation ?? "portrait"));

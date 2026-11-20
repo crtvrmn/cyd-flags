@@ -32,6 +32,7 @@ namespace CydFlags
         public bool PageTower = true;
         public bool PageLogic = true;
         public bool PageRev = true;
+        public bool PageSabt = true;
 
         /// <summary>Physical mounting of this display. "portrait" is the
         /// native 240x320 layout; "landscape" rotates it 90 degrees.</summary>
@@ -66,6 +67,7 @@ namespace CydFlags
             if (PageTower) result = AppendFeature(result, "tower");
             if (PageLogic) result = AppendFeature(result, "logic");
             if (PageRev) result = AppendFeature(result, "rev");
+            if (PageSabt) result = AppendFeature(result, "sabt");
             return result.Length == 0 ? "none" : result;
         }
 
@@ -143,6 +145,7 @@ namespace CydFlags
         public bool PageTower = true;
         public bool PageLogic = true;
         public bool PageRev = true;
+        public bool PageSabt = true;
 
         /// <summary>Physical mounting of this display. "portrait" is the
         /// native 240x320 layout; "landscape" rotates it 90 degrees.</summary>

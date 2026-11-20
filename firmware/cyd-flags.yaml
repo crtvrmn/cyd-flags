@@ -30,7 +30,7 @@ substitutions:
   # On boards without a speaker this is simply silent.
   alarm_sound_pin: GPIO26
   # Shown on the boot splash; update together with the plugin version.
-  firmware_version: "0.7.12"
+  firmware_version: "0.8.0"
 
 esphome:
   name: ${device_name}
@@ -92,7 +92,7 @@ web_server:
 # Fast realtime path: the SimHub plugin sends small UDP datagrams (one type
 # per packet) so the 20 Hz tower/rev data does not pay HTTP request overhead.
 # The first byte is the type, the rest is the payload, optionally newline
-# terminated: f flag, g game, t timing, l logic, r rev, d delta, h heartbeat.
+# terminated: f flag, g game, t timing, l logic, r rev, d delta, s sabt, h heartbeat.
 udp:
   id: udp_fast
   port: 18512
@@ -111,6 +111,7 @@ udp:
           case 'l': id(logic_raw) = payload; break;
           case 'r': id(rev_raw) = payload; break;
           case 'd': id(delta_raw) = payload; break;
+          case 's': id(sabt_raw) = payload; break;
           case 'h':
             id(link_seen) = true;
             id(link_last_ms) = millis();
@@ -204,6 +205,7 @@ display:
       // clock. Color codes: -=none, G=green, R=red, P=purple.
       const std::string timing = id(timing_raw);
       const std::string logic_text = id(logic_raw);
+      const std::string sabt_text = id(sabt_raw);
 
       // Rev payload: gear~speed_kmh~rpm~max_rpm~redline~rpm_percent~blink.
       const std::string rev_text = id(rev_raw);
@@ -221,6 +223,21 @@ display:
       }
       const bool rev_ready = id(feat_rev) && link && rev_count > 0 && !rev_f[0].empty();
 
+      // SABT payload: enabled~idle~resting~maximum (SABT tension settings).
+      std::string sabt_f[4];
+      int sabt_count = 0;
+      if (!sabt_text.empty()) {
+        size_t q = 0;
+        while (sabt_count < 4 && q <= sabt_text.size()) {
+          size_t sep = sabt_text.find('~', q);
+          if (sep == std::string::npos) sep = sabt_text.size();
+          sabt_f[sabt_count++] = sabt_text.substr(q, sep - q);
+          if (sep == sabt_text.size()) break;
+          q = sep + 1;
+        }
+      }
+      const bool sabt_ready = id(feat_sabt) && link && sabt_count >= 4;
+
       // A flag still takes over the whole screen. A real race has the tower
       // and logic pages; rev is also available in practice/qualifying.
       const bool race_session = id(race_mode) && !flag_active
@@ -229,11 +246,12 @@ display:
       const bool avail_logic = id(feat_logic) && race_session && !logic_text.empty();
       const bool avail_clock = id(feat_clock);
       const bool avail_rev = rev_ready;
+      const bool avail_sabt = sabt_ready;
       int view = id(race_view);
-      const bool avail[4] = {avail_tower, avail_logic, avail_clock, avail_rev};
-      if (view < 0 || view > 3 || !avail[view]) {
-        const int order[4] = {0, 1, 3, 2};
-        for (int i = 0; i < 4; i++) {
+      const bool avail[5] = {avail_tower, avail_logic, avail_clock, avail_rev, avail_sabt};
+      if (view < 0 || view > 4 || !avail[view]) {
+        const int order[5] = {0, 1, 3, 4, 2};
+        for (int i = 0; i < 5; i++) {
           if (avail[order[i]]) { view = order[i]; break; }
         }
       }
@@ -241,6 +259,7 @@ display:
       const bool race = view == 0 && avail_tower;
       const bool logic_page = view == 1 && avail_logic;
       const bool rev_page = view == 3 && avail_rev && !flag_active;
+      const bool sabt_page = view == 4 && avail_sabt && !flag_active;
       const bool clock_page = view == 2 && avail_clock;
 
       // The rev page needs a faster refresh than the static clock/flag pages.
@@ -255,8 +274,10 @@ display:
       const bool nav_logic = id(feat_logic) && race_session && !logic_text.empty();
       const bool nav_clock = id(feat_clock);
       const bool nav_rev = rev_ready;
+      const bool nav_sabt = sabt_ready;
       const int nav_page_count = (nav_tower ? 1 : 0) + (nav_logic ? 1 : 0)
-                                 + (nav_clock ? 1 : 0) + (nav_rev ? 1 : 0);
+                                 + (nav_clock ? 1 : 0) + (nav_rev ? 1 : 0)
+                                 + (nav_sabt ? 1 : 0);
       // The touch lambda blocks whenever a flag is latched, with or without a
       // link; hide the hint under the same rule so it never advertises dead
       // buttons.
@@ -272,7 +293,7 @@ display:
                  TextAlign::TOP_RIGHT, "UDP BLOCKED");
       };
 
-      if (!race && !logic_page && !rev_page) {
+      if (!race && !logic_page && !rev_page && !sabt_page) {
         if (!flag_active) {
           bg = Color(12, 14, 20);
           fg = Color(235, 235, 240);
@@ -414,7 +435,7 @@ display:
 
       // Nothing enabled for this state (e.g. flags-only and no flag): say so
       // instead of leaving a confusing clock that the user disabled.
-      if (!race && !logic_page && !rev_page && !flag_active && !id(feat_clock) && !clock_page) {
+      if (!race && !logic_page && !rev_page && !sabt_page && !flag_active && !id(feat_clock) && !clock_page) {
         it.print(W / 2, H / 2, id(font_sub), Color(130, 135, 145), TextAlign::CENTER,
                  "NO PAGE");
         draw_udp_badge();
@@ -538,6 +559,34 @@ display:
           it.print(18, y + 8, id(font_sub), Color(245, 245, 245), TextAlign::CENTER_LEFT, sector_labels[i]);
           it.print(W - 18, y + 8, id(font_sub), Color(245, 245, 245), TextAlign::CENTER_RIGHT,
                    count > 4 + i * 2 ? f[4 + i * 2].c_str() : "--.---");
+        }
+        draw_nav_hint();
+        draw_udp_badge();
+        return;
+      }
+
+      if (sabt_page) {
+        // SABT (Simple Active Belt Tensioner) settings from the SimHub plugin.
+        // Payload: enabled~idle~resting~maximum (SABT tension settings).
+        it.print(6, 8, id(font_small), Color(190, 195, 205), TextAlign::CENTER_LEFT, clock_text.c_str());
+        it.print(W / 2, 8, id(font_small), Color(150, 155, 165), TextAlign::CENTER, "SABT");
+        if (show_ip) {
+          it.print(W - 6, 8, id(font_small), Color(150, 150, 160), TextAlign::CENTER_RIGHT,
+                   id(ip_address).state.c_str());
+        }
+        const bool on = sabt_f[0] != "0";
+        it.print(W / 2, portrait ? 38 : 28, id(font_sub),
+                 on ? Color(80, 240, 130) : Color(210, 120, 90),
+                 TextAlign::CENTER, on ? "ACTIVE" : "OFF");
+        const char *labels[3] = {"IDLE", "REST", "MAX"};
+        const int card_top = portrait ? 72 : 52;
+        const int card_h = portrait ? 66 : 50;
+        for (int i = 0; i < 3; i++) {
+          int y = card_top + i * card_h;
+          it.filled_rectangle(8, y, W - 16, card_h - 4, Color(26, 30, 40));
+          it.print(18, y + 8, id(font_sub), Color(150, 155, 165), TextAlign::CENTER_LEFT, labels[i]);
+          it.print(W - 18, y + 6, id(font_sub), Color(245, 245, 245), TextAlign::CENTER_RIGHT,
+                   sabt_count > i + 1 ? sabt_f[i + 1].c_str() : "--");
         }
         draw_nav_hint();
         draw_udp_badge();
@@ -773,15 +822,16 @@ touchscreen:
           if (y < H / 2) return;
 
           // Pages the navigation may visit, indexed like race_view:
-          // 0 = timing tower, 1 = race logic, 2 = clock, 3 = rev limiter.
-          const int kPageCount = 4;
+          // 0 = timing tower, 1 = race logic, 2 = clock, 3 = rev, 4 = SABT.
+          const int kPageCount = 5;
           const bool available[kPageCount] = {
               id(race_mode) && id(feat_tower) && !id(timing_raw).empty(),
               id(race_mode) && id(feat_logic) && !id(logic_raw).empty(),
               id(feat_clock),
               id(feat_rev) && !id(rev_raw).empty() && id(link_seen),
+              id(feat_sabt) && !id(sabt_raw).empty() && id(link_seen),
           };
-          const int order[kPageCount] = {0, 1, 3, 2};
+          const int order[kPageCount] = {0, 1, 3, 4, 2};
 
           bool any_available = false;
           for (int i = 0; i < kPageCount; i++) {
@@ -907,12 +957,16 @@ globals:
     restore_value: false
     initial_value: "0"
   # Set by a tap on the panel; only affects the race view. Flags still win.
-  # 0 = timing tower, 1 = race logic, 2 = clock.
+  # 0 = timing tower, 1 = race logic, 2 = clock, 3 = rev, 4 = SABT.
   - id: race_view
     type: int
     restore_value: false
     initial_value: "0"
   - id: rev_raw
+    type: std::string
+    restore_value: false
+    initial_value: '""'
+  - id: sabt_raw
     type: std::string
     restore_value: false
     initial_value: '""'
@@ -945,7 +999,7 @@ globals:
   - id: feature_list
     type: std::string
     restore_value: true
-    initial_value: '"flags,clock,tower,logic,rev"'
+    initial_value: '"flags,clock,tower,logic,rev,sabt"'
   - id: feat_flags
     type: bool
     restore_value: false
@@ -963,6 +1017,10 @@ globals:
     restore_value: false
     initial_value: "true"
   - id: feat_rev
+    type: bool
+    restore_value: false
+    initial_value: "true"
+  - id: feat_sabt
     type: bool
     restore_value: false
     initial_value: "true"
@@ -1091,6 +1149,16 @@ text:
       - lambda: |-
           id(rev_raw) = x;
   - platform: template
+    name: sabt
+    id: sabt
+    optimistic: true
+    mode: text
+    min_length: 0
+    max_length: 64
+    on_value:
+      - lambda: |-
+          id(sabt_raw) = x;
+  - platform: template
     name: lap_label
     id: lap_label
     optimistic: true
@@ -1120,7 +1188,7 @@ text:
     max_length: 12
     initial_value: "0"
     restore_value: false
-  # Comma-separated page list sent by the plugin: flags,clock,tower,logic,rev.
+  # Comma-separated page list sent by the plugin: flags,clock,tower,logic,rev,sabt.
   # An empty value means "all pages" for compatibility; "none" hides all.
   - platform: template
     name: features
@@ -1129,7 +1197,7 @@ text:
     mode: text
     min_length: 0
     max_length: 64
-    initial_value: "flags,clock,tower,logic,rev"
+    initial_value: "flags,clock,tower,logic,rev,sabt"
     restore_value: true
     on_value:
       - lambda: |-
@@ -1139,10 +1207,12 @@ text:
           id(feat_tower) = x.empty() || x.find("tower") != std::string::npos;
           id(feat_logic) = x.empty() || x.find("logic") != std::string::npos;
           id(feat_rev) = x.empty() || x.find("rev") != std::string::npos;
+          id(feat_sabt) = x.empty() || x.find("sabt") != std::string::npos;
           if (!id(feat_tower) && id(race_view) == 0) id(race_view) = id(feat_logic) ? 1 : 2;
           if (!id(feat_logic) && id(race_view) == 1) id(race_view) = id(feat_clock) ? 2 : 0;
           if (!id(feat_clock) && id(race_view) == 2) id(race_view) = id(feat_tower) ? 0 : 1;
           if (!id(feat_rev) && id(race_view) == 3) id(race_view) = 0;
+          if (!id(feat_sabt) && id(race_view) == 4) id(race_view) = 0;
 
   # Per-CYD orientation, selected in the SimHub plugin. Landscape rotates the
   # panel by 90 degrees at runtime, so one firmware supports both mountings.
