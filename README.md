@@ -21,7 +21,7 @@ delaying the others.
 | race session | relative tower: car ahead, you, car behind — position, name, lap time and a persistent trend disc (blue neutral, green +, red −); optional live delta-to-previous-lap bar |
 | race session, bottom-right corner | next page: race logic / rev limiter / SABT / clock; bottom-left goes back |
 | race logic | delta to best and sector times (green/red vs. your best) |
-| rev limiter | large gear and km/h only, updated at 33 Hz; also in practice/qualifying |
+| rev limiter | large gear with the speed number underneath (no unit label), updated at 33 Hz; also in practice/qualifying |
 | SABT | belt-tensioner state and idle/minimum/maximum tension from the Simple Active Belt Tensioner plugin |
 | menus / practice / qualifying | large clock and date, with a small alarm shortcut top-left |
 | alarm time reached | full-screen flashing ALARM; tap anywhere to stop |

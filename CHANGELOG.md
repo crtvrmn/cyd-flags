@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2
+
+* **Cleaner rev page.** The large gear now has only the speed number underneath;
+  the `km/h` label and the wide unit glyphs are gone, so the page stays clean
+  and centered in both orientations.
+
 ## 0.8.1
 
 * **SABT page fix.** The released SABT plugin exposes `SABT.MinimumTension`,

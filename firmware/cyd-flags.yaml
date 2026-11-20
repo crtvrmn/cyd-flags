@@ -30,7 +30,7 @@ substitutions:
   # On boards without a speaker this is simply silent.
   alarm_sound_pin: GPIO26
   # Shown on the boot splash; update together with the plugin version.
-  firmware_version: "0.8.1"
+  firmware_version: "0.8.2"
 
 esphome:
   name: ${device_name}
@@ -472,9 +472,10 @@ display:
 
       if (rev_page) {
         const bool has_speed = rev_count > 1 && rev_f[1] != "-";
-        const int gear_y = portrait ? 150 : 105;
-        const int speed_y = portrait ? 245 : 185;
-        std::string speed_line = has_speed ? rev_f[1] + " km/h" : "-- km/h";
+        // Big gear, then only the speed number underneath - no unit label.
+        const int gear_y = portrait ? 138 : 102;
+        const int speed_y = portrait ? 242 : 190;
+        const std::string speed_line = has_speed ? rev_f[1] : "--";
 
         // Only gear and speed: no RPM bar, no extra labels. A full repaint is
         // needed on page entry or when the boot IP hint appears; otherwise the
@@ -490,11 +491,11 @@ display:
           draw_nav_hint();
         } else {
           if (rev_f[0] != id(rev_last_gear)) {
-            it.filled_rectangle(0, gear_y - 78, W, 156, bg);
+            it.filled_rectangle(0, gear_y - 66, W, 132, bg);
             it.print(W / 2, gear_y, id(font_gear), fg, TextAlign::CENTER, rev_f[0].c_str());
           }
           if (speed_line != id(rev_last_speed)) {
-            it.filled_rectangle(0, speed_y - 20, W, 42, bg);
+            it.filled_rectangle(0, speed_y - 22, W, 44, bg);
             it.print(W / 2, speed_y, id(font_speed), Color(210, 215, 225),
                      TextAlign::CENTER, speed_line.c_str());
           }
@@ -883,12 +884,12 @@ font:
     glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;!?()[]&+/-_'~"
   - file: "fonts/DejaVuSansCondensed-Bold.ttf"
     id: font_gear
-    size: 120
+    size: 132
     glyphs: "0123456789RN-+"
   - file: "fonts/DejaVuSansCondensed-Bold.ttf"
     id: font_speed
-    size: 28
-    glyphs: "0123456789 km/h-"
+    size: 34
+    glyphs: "0123456789-"
   - file: "fonts/DejaVuSansCondensed-Bold.ttf"
     id: font_small
     size: 13

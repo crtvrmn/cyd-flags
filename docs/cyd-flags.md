@@ -301,8 +301,8 @@ rotates it at runtime. There are seven screen types:
    **green** when that sector was faster than your best lap's sector and
    **red** when it was slower. A sector that has not been completed yet shows
    `--.---` on a neutral background.
-3. **Rev limiter** — large gear and speed in km/h only, no bar or RPM text.
-   The page polls at 33 Hz (30 ms) and only the changed gear/speed rectangles
+3. **Rev limiter** — large gear with only the speed number underneath (no unit
+   label), no bar or RPM text. The page polls at 33 Hz (30 ms) and only the changed gear/speed rectangles
    are transferred; the plugin builds it at 50 Hz. The tower/logic pages use
    80 ms, the clock/flag pages 300 ms. Available in races
    and in practice/qualifying.
