@@ -193,8 +193,8 @@ The same settings page has three more groups:
 
 - **Pages on the display** — tick **Flags**, **Clock**, **Relative tower** and
   **Race logic**. The plugin sends this list to the `features` entity. Disabled
-  pages disappear from the touch cycle; with nothing selected the CYD shows
-  **NO PAGE**. Flags keep priority over all pages.
+  pages are skipped by the corner navigation; with nothing selected the CYD
+  shows **NO PAGE**. Flags keep priority over all pages.
 - **WiFi on the display** — enter the SSID and password and press **Save WiFi
   on display and connect**. The plugin writes `wifi_ssid`/`wifi_password` and
   presses the `wifi_connect` button, which calls ESPHome's `wifi.configure` with
@@ -249,12 +249,32 @@ The panel is portrait (240×320). There are four screen types:
 4. **Clock** — menus, practice, qualifying, and the no-link fallback show the
    big NTP clock and the date.
 
-**Touch:** during a race a tap anywhere cycles **tower → race logic → clock**;
-the next tap starts over at the tower. Taps outside a race are ignored, and an
-active flag still has priority over all pages. The touch controller (XPT2046)
-is polled on its own SPI pins; only tap detection is used, so the full panel
-works as one button and no precise calibration is needed. The page selection is
-reset to the tower when the race session ends.
+**Touch (four corner quadrants):** during a race the panel is split into four
+corners. **Bottom-left = previous page**, **bottom-right = next page**; the two
+top corners are reserved for future functions and do nothing today. A **24 px
+dead cross** (12 px either side of the horizontal and vertical centre lines)
+separates the quadrants, so a tap on the cross is ignored. Navigation only
+visits pages that are actually available and enabled, and wraps around:
+previous from the first page goes to the last, next from the last goes to the
+first. Taps outside a race are ignored, and an active flag still has priority:
+while a flag is shown the corners do not navigate. When at least two pages are
+available and no flag is active, a very dim `<` / `>` appears in the bottom
+corners as an orientation aid. The page selection is reset to the tower when
+the race session ends.
+
+```
+┌──────────────┬──────────────┐
+│  top-left    │  top-right   │   reserved (no action)
+│  (reserved)  │  (reserved)  │
+├──────────────┼──────────────┤   ← 24 px dead cross
+│ bottom-left  │ bottom-right │
+│  ◀ previous  │  next ▶      │
+└──────────────┴──────────────┘
+```
+
+The touch controller (XPT2046) is polled on its own SPI pins. `touch.x` and
+`touch.y` are already in screen pixels, so the quadrants follow the configured
+display rotation; the corners are large, so a rough calibration is enough.
 
 ```
 ┌────────────────────────┐

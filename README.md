@@ -17,13 +17,15 @@ over your LAN.
 | situation | screen |
 |-----------|--------|
 | race session | relative tower: car ahead, you, car behind — position, name, gap and lap time |
-| race session, tap | race logic: current lap, sector times (green/red vs. your best), delta to best |
-| race session, tap again | large clock |
+| race session, bottom-right corner | next enabled page: race logic → large clock → tower |
+| race session, bottom-left corner | previous enabled page (wraps around) |
 | menus / practice / qualifying | large clock and date |
 | any flag | full-screen flag (red, yellow, blue, white, checkered, black, orange…) |
 | no heartbeat from SimHub for 5 s | clock with `NO LINK` |
 
-Flags always take priority over the timing pages. The header of the tower shows
+The four quadrants are separated by a 24 px dead cross (12 px each side of the
+centre lines); the top two corners are reserved for future functions. Flags
+always take priority over the timing pages. The header of the tower shows
 **LAST** or **BEST** (selectable in the plugin), with a **PIT** suffix while you
 are in the pit lane. The IP address is shown for the first 15 seconds after
 boot.
@@ -58,8 +60,8 @@ troubleshooting: [ANLEITUNG.md](ANLEITUNG.md).
 From the plugin you can also:
 
 - **Choose pages** — flags only, clock only, tower, race logic, or any
-  combination. Disabled pages disappear from the touch cycle and the ESP stores
-  the choice.
+  combination. Disabled pages are skipped by the corner navigation and the ESP
+  stores the choice.
 - **Open the display web UI** with one click.
 - **Store WiFi on the display** — written to the ESP's NVS with
   `wifi.configure save: true`, so it survives OTA updates and reboots. A full
