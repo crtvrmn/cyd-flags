@@ -43,6 +43,7 @@ namespace CydFlags.UI
         private TextBox _deviceName;
         private TextBox _host;
         private TextBox _port;
+        private TextBox _udpPort;
         private CheckBox _showBestLap;
         private CheckBox _showDeltaBar;
         private CheckBox _applyBrightness;
@@ -345,6 +346,13 @@ namespace CydFlags.UI
                     if (int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out port))
                         device.Port = port;
                 }, 70);
+            _udpPort = AddText(root, "UDP port", () => device.UdpPort.ToString(CultureInfo.InvariantCulture),
+                v =>
+                {
+                    int port;
+                    if (int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out port))
+                        device.UdpPort = port;
+                }, 70);
 
             Button open = AddButton(root, "Open display web UI");
             open.Click += (s, e) =>
@@ -546,6 +554,12 @@ namespace CydFlags.UI
                         CultureInfo.InvariantCulture, out value))
                 {
                     device.Port = value;
+                }
+                if (_udpPort != null
+                    && int.TryParse((_udpPort.Text ?? string.Empty).Trim(), NumberStyles.Integer,
+                        CultureInfo.InvariantCulture, out value))
+                {
+                    device.UdpPort = value;
                 }
 
                 device.ShowBestLap = _showBestLap != null && _showBestLap.IsChecked == true;

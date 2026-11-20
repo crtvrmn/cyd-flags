@@ -20,6 +20,10 @@ namespace CydFlags
 
         public int Port = 80;
 
+        /// <summary>UDP port of the ESPHome fast data path. The firmware
+        /// listens on 18512; HTTP is still used for configuration.</summary>
+        public int UdpPort = 18512;
+
         /// <summary>Which pages the display should offer. The plugin sends this
         /// list to the ESP; the firmware hides disabled pages and the touch
         /// cycle skips them.</summary>
@@ -84,6 +88,7 @@ namespace CydFlags
                 Orientation = "landscape";
 
             Port = Math.Max(1, Math.Min(65535, Port));
+            UdpPort = Math.Max(1, Math.Min(65535, UdpPort));
             Brightness = Math.Max(0, Math.Min(100, Brightness));
         }
     }
@@ -183,6 +188,7 @@ namespace CydFlags
                 Enabled = true,
                 Host = string.IsNullOrWhiteSpace(Host) ? "cyd-flags.local" : Host.Trim(),
                 Port = Port,
+                UdpPort = 18512,
                 PageFlags = PageFlags,
                 PageClock = PageClock,
                 PageTower = PageTower,

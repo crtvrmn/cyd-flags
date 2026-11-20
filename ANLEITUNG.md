@@ -320,6 +320,7 @@ relativen Fahrer zu allen aktivierten Displays.
 | **Tippen** schaltet die Seite nicht um | Unten rechts = nächste, unten links = zurück; die oberen Ecken sind für den Alarm reserviert. Standardmäßig gibt es alle Seiten überall; mit der Race-Pages-Option im Training/Qualifying nur Rev-Limiter und Uhr. Bei einer aktiven Flagge reagiert die Navigation nicht. Bei ganz alter Firmware fehlt die Touch-Funktion → neue Datei flashen. |
 | **Touch reagiert links/rechts vertauscht** | Firmware 0.7.2 korrigiert die gespiegelte X-Achse des CYD-Touchcontrollers. Neue Factory-/OTA-Datei flashen. |
 | Racelogic-Sektoren bleiben **`--.---`** | Dein Spiel liefert keine aktuellen Sektorzeiten. Runde und Delta funktionieren trotzdem; die Sektoren füllen sich, sobald das Spiel sie meldet. |
+| Turm / Rev-Limiter aktualisiert **zu langsam** | Plugin und Firmware müssen beide 0.7.5 sein. Die Echtzeitdaten laufen über **UDP 18512**; prüfe, ob die Windows-Firewall UDP blockiert, und trage im Plugin besser die **IP** des Displays ein (nicht `cyd-flags.local`). Ohne UDP fällt das Plugin auf HTTP zurück und der Turm wird wieder träge. |
 | Alles geht, aber nach Router-Neustart nicht mehr | Die IP hat sich geändert. Neue IP auf dem Display ablesen und im Plugin eintragen. |
 
 ---

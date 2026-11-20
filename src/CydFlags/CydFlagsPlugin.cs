@@ -24,7 +24,7 @@ namespace CydFlags
     [PluginName("CYD Flags")]
     public class CydFlagsPlugin : IPlugin, IDataPlugin, IWPFSettingsV2
     {
-        public const string Version = "0.7.4";
+        public const string Version = "0.7.5";
 
         public CydFlagsSettings Settings;
 
@@ -315,7 +315,7 @@ namespace CydFlags
                     DateTime now = DateTime.UtcNow;
                     if (anyTower)
                     {
-                        if ((now - _lastTimingBuildUtc).TotalMilliseconds >= 400)
+                        if ((now - _lastTimingBuildUtc).TotalMilliseconds >= 50)
                         {
                             // Build both variants so each display can show its
                             // own LAST/BEST choice from the shared snapshot.
@@ -339,7 +339,7 @@ namespace CydFlags
 
                     if (anyLogic)
                     {
-                        if ((now - _lastLogicBuildUtc).TotalMilliseconds >= 400)
+                        if ((now - _lastLogicBuildUtc).TotalMilliseconds >= 100)
                         {
                             logicPayload = RaceLogicBuilder.Build(data.NewData);
                             _lastLogicBuildUtc = now;
@@ -365,7 +365,7 @@ namespace CydFlags
                 DateTime revNow = DateTime.UtcNow;
                 if (anyRev)
                 {
-                    if ((revNow - _lastRevBuildUtc).TotalMilliseconds >= 50)
+                    if ((revNow - _lastRevBuildUtc).TotalMilliseconds >= 40)
                     {
                         revPayload = RevBuilder.Build(data.NewData);
                         _lastRevBuildUtc = revNow;
@@ -762,7 +762,7 @@ namespace CydFlags
             if (option != state.LastSentFlag
                 && (now - state.LastFlagSentUtc).TotalMilliseconds >= settings.MinSendIntervalMs)
             {
-                if (!state.Client.SendFlag(shared.Flag)) { Fail(state, now); return; }
+                if (!SendRealtimeFlag(state, shared.Flag)) { Fail(state, now); return; }
                 state.LastSentFlag = option;
                 state.LastFlagSentUtc = now;
                 LogRequest(state, "flag " + option);
@@ -771,7 +771,7 @@ namespace CydFlags
             if (safeGame != state.LastSentGame
                 && (now - state.LastGameSentUtc).TotalMilliseconds >= settings.MinSendIntervalMs)
             {
-                if (!state.Client.SendGame(safeGame)) { Fail(state, now); return; }
+                if (!SendRealtimeGame(state, safeGame)) { Fail(state, now); return; }
                 state.LastSentGame = safeGame;
                 state.LastGameSentUtc = now;
                 LogRequest(state, "game '" + safeGame + "'");
@@ -808,7 +808,7 @@ namespace CydFlags
                     || (now - state.LastTimingSentUtc).TotalSeconds >= 5;
                 if (!string.IsNullOrEmpty(timing) && timingDue)
                 {
-                    if (!state.Client.SendTiming(timing)) { Fail(state, now); return; }
+                    if (!SendRealtime(state, "timing", timing)) { Fail(state, now); return; }
                     state.LastSentTiming = timing;
                     state.LastTimingSentUtc = now;
                     LogRequest(state, "timing (" + timing.Length + " chars)");
@@ -818,7 +818,7 @@ namespace CydFlags
             {
                 // Clear the tower payload when leaving the race or when the
                 // tower page is disabled, so no stale rows can appear later.
-                if (!state.Client.SendTiming(string.Empty)) { Fail(state, now); return; }
+                if (!SendRealtime(state, "timing", string.Empty)) { Fail(state, now); return; }
                 state.LastSentTiming = null;
                 LogRequest(state, "timing cleared");
             }
@@ -830,7 +830,7 @@ namespace CydFlags
                     || (now - state.LastDeltaSentUtc).TotalSeconds >= 1;
                 if (deltaDue)
                 {
-                    if (!state.Client.SendDelta(shared.Delta)) { Fail(state, now); return; }
+                    if (!SendRealtime(state, "delta", shared.Delta)) { Fail(state, now); return; }
                     state.LastSentDelta = shared.Delta;
                     state.LastDeltaSentUtc = now;
                     LogRequest(state, "delta " + shared.Delta);
@@ -838,7 +838,7 @@ namespace CydFlags
             }
             else if (state.LastSentDelta != null)
             {
-                if (!state.Client.SendDelta(string.Empty)) { Fail(state, now); return; }
+                if (!SendRealtime(state, "delta", string.Empty)) { Fail(state, now); return; }
                 state.LastSentDelta = null;
                 LogRequest(state, "delta cleared");
             }
@@ -849,7 +849,7 @@ namespace CydFlags
                     || (now - state.LastLogicSentUtc).TotalSeconds >= 5;
                 if (!string.IsNullOrEmpty(shared.Logic) && logicDue)
                 {
-                    if (!state.Client.SendLogic(shared.Logic)) { Fail(state, now); return; }
+                    if (!SendRealtime(state, "logic", shared.Logic)) { Fail(state, now); return; }
                     state.LastSentLogic = shared.Logic;
                     state.LastLogicSentUtc = now;
                     LogRequest(state, "logic (" + shared.Logic.Length + " chars)");
@@ -857,7 +857,7 @@ namespace CydFlags
             }
             else if (state.LastSentLogic != null)
             {
-                if (!state.Client.SendLogic(string.Empty)) { Fail(state, now); return; }
+                if (!SendRealtime(state, "logic", string.Empty)) { Fail(state, now); return; }
                 state.LastSentLogic = null;
                 LogRequest(state, "logic cleared");
             }
@@ -868,7 +868,7 @@ namespace CydFlags
                     || (now - state.LastRevSentUtc).TotalMilliseconds >= 1000;
                 if (revDue)
                 {
-                    if (!state.Client.SendRev(shared.Rev)) { Fail(state, now); return; }
+                    if (!SendRealtime(state, "rev", shared.Rev)) { Fail(state, now); return; }
                     state.LastSentRev = shared.Rev;
                     state.LastRevSentUtc = now;
                     LogRequest(state, "rev " + shared.Rev);
@@ -876,7 +876,7 @@ namespace CydFlags
             }
             else if (state.LastSentRev != null)
             {
-                if (!state.Client.SendRev(string.Empty)) { Fail(state, now); return; }
+                if (!SendRealtime(state, "rev", string.Empty)) { Fail(state, now); return; }
                 state.LastSentRev = null;
                 LogRequest(state, "rev cleared");
             }
@@ -902,10 +902,36 @@ namespace CydFlags
                 // every heartbeat still changes the displayed value and the
                 // on_value trigger keeps firing.
                 if (state.HeartbeatCounter > 1000000) state.HeartbeatCounter = 0;
-                if (!state.Client.SendHeartbeat(state.HeartbeatCounter)) { Fail(state, now); return; }
+                if (!SendRealtimeHeartbeat(state, state.HeartbeatCounter)) { Fail(state, now); return; }
                 state.LastHeartbeatUtc = now;
                 LogRequest(state, "heartbeat " + state.HeartbeatCounter);
             }
+        }
+
+        /// <summary>Send realtime data over UDP, falling back to HTTP only when
+        /// the fast path is unusable (e.g. a host name that does not resolve).</summary>
+        private static bool SendRealtimeFlag(DeviceState state, FlagKind kind)
+        {
+            return state.Udp.SendFlag(FlagModel.ToOption(kind)) || state.Client.SendFlag(kind);
+        }
+
+        private static bool SendRealtimeGame(DeviceState state, string game)
+        {
+            return state.Udp.SendGame(game) || state.Client.SendGame(game);
+        }
+
+        private static bool SendRealtimeHeartbeat(DeviceState state, int counter)
+        {
+            return state.Udp.SendHeartbeat(counter) || state.Client.SendHeartbeat(counter);
+        }
+
+        private static bool SendRealtime(DeviceState state, string kind, string payload)
+        {
+            if (kind == "timing") return state.Udp.SendTiming(payload) || state.Client.SendTiming(payload);
+            if (kind == "logic") return state.Udp.SendLogic(payload) || state.Client.SendLogic(payload);
+            if (kind == "rev") return state.Udp.SendRev(payload) || state.Client.SendRev(payload);
+            if (kind == "delta") return state.Udp.SendDelta(payload) || state.Client.SendDelta(payload);
+            return false;
         }
 
         private void Fail(DeviceState state, DateTime now)
@@ -1021,6 +1047,7 @@ namespace CydFlags
         {
             public readonly CydFlagsDeviceSettings Settings;
             public readonly DeviceClient Client;
+            public readonly UdpLink Udp;
 
             public string LastSentFlag;
             public string LastSentGame;
@@ -1058,6 +1085,7 @@ namespace CydFlags
             {
                 Settings = settings;
                 Client = new DeviceClient(() => Settings);
+                Udp = new UdpLink(() => Settings);
                 WasEnabled = settings.Enabled;
                 HostKey = BuildHostKey(settings);
             }
@@ -1202,7 +1230,7 @@ namespace CydFlags
 
         private static string BuildHostKey(CydFlagsDeviceSettings device)
         {
-            return (device.Host ?? string.Empty) + "|" + device.Port;
+            return (device.Host ?? string.Empty) + "|" + device.Port + "|" + device.UdpPort;
         }
 
         private string DescribeTargets()

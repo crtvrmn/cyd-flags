@@ -6,8 +6,8 @@ game on one or more 2.8" **Cheap Yellow Displays** (ESP32-2432S028R):
 
 | part | what it is |
 |------|------------|
-| [`firmware/cyd-flags.yaml`](../firmware/cyd-flags.yaml) | ESPHome firmware: draws the flag/clock/timing screens and exposes a tiny HTTP API |
-| [`src/CydFlags/`](../src/CydFlags/) | SimHub plugin: reads flags and relative opponents, POSTs changes to every enabled display |
+| [`firmware/cyd-flags.yaml`](../firmware/cyd-flags.yaml) | ESPHome firmware: draws the flag/clock/timing screens, receives fast UDP updates and exposes an HTTP configuration API |
+| [`src/CydFlags/`](../src/CydFlags/) | SimHub plugin: reads flags and relative opponents, sends realtime data over UDP and configuration over HTTP |
 
 Outside a race session (menus, practice, qualifying) the display is a clock.
 In a real race session it shows the car ahead, your car and the car behind with
@@ -15,23 +15,26 @@ position, driver name, gap and lap time — plus a small clock in the top-left.
 The header says **LAST** or **BEST** (selectable per display in the plugin) and
 turns into **LAST PIT** while you are in the pit lane.
 When a flag is active it still takes over the whole screen. There is no MQTT
-broker, no Home Assistant and no PC-side Python bridge. Each display runs a web
-server; SimHub talks to it directly over your LAN.
+broker, no Home Assistant and no PC-side Python bridge. Each display listens
+for realtime updates on **UDP port 18512** and runs a small HTTP server on
+port 80 for configuration; SimHub talks to both directly over your LAN.
 
 All displays receive the same race data, but pages, backlight and WiFi are
 configured per display. A panel that is switched off, unplugged or on the wrong
 IP only backs off itself: the plugin keeps updating the other panels.
 
-Flag changes are **coalesced**: each panel redraws on a fixed 300 ms cadence
-instead of once per HTTP request, so a burst of yellow/blue/white changes cannot
-make the display queue up and lag behind. You always see the newest state, and
-intermediate flags that lasted only a few hundred milliseconds are skipped.
+Realtime data goes over **UDP**, not HTTP. The race tower is built at 20 Hz
+and drawn at 12.5 Hz (80 ms), the rev page is built and drawn at 20 Hz (50 ms),
+race logic at 10 Hz; the clock and flag screens stay at 300 ms. That is roughly
+an order of magnitude less latency than the old HTTP-only path. HTTP is still
+used for configuration (pages, orientation, brightness, WiFi) and for manual
+testing with `curl`.
 
 ```
-                                    ┌──HTTP POST──► ESP32 CYD #1
-game ──telemetry──► SimHub ──► CydFlags plugin ──┼──HTTP POST──► ESP32 CYD #2
-                                    └──HTTP POST──► ESP32 CYD #3
-                                       (on change + heartbeat, per display)
+                                 ┌──UDP 18512 (realtime)──► ESP32 CYD #1
+game ──telemetry──► SimHub ──► CydFlags plugin ──┼──UDP 18512──────────────► ESP32 CYD #2
+                                 └──HTTP 80 (config)──────► ESP32 CYD #3
+                                    per display, no cloud
 ```
 
 ---
@@ -289,7 +292,8 @@ rotates it at runtime. There are six screen types:
    red and the page blinks when the rev limiter is reached. While this page is
    visible the display polls at 20 Hz (50 ms) and only the changed widgets are
    transferred (RPM bar every frame; gear/speed only when they change). The
-   other pages stay at 300 ms. Available in races and in practice/qualifying.
+   tower/logic pages use 80 ms, the clock/flag pages 300 ms. Available in races
+   and in practice/qualifying.
 4. **Flag** — a flag reported by the game takes over the whole screen, exactly
    like before.
 5. **Clock** — menus, practice, qualifying, and the no-link fallback show the
@@ -388,10 +392,33 @@ memory directly would be a separate, game-specific feature.
 
 ---
 
+## Fast UDP protocol
+
+The plugin sends one small datagram per value. The first byte is the type, the
+rest is UTF-8 text (normally newline-terminated):
+
+| byte | payload | example |
+|------|---------|---------|
+| `f` | flag option | `fYELLOW` |
+| `g` | game name | `gAssetto Corsa Competizione` |
+| `t` | tower rows (same `;`/`~` format as `/text/timing`) | `t6~Fabio~0.45~G~1:47.383~P;...` |
+| `l` | race-logic payload | `l1:23.456~-~-0.234~G~31.234~G~35.100~R~--.---~-` |
+| `r` | rev payload | `r4~123~7800~8500~8000~92~0` |
+| `d` | delta seconds | `d-0.421` |
+| `h` | heartbeat counter | `h42` |
+
+The firmware listens on **UDP 18512**; no port forwarding is involved. Windows
+normally allows the outbound datagrams. If your firewall blocks UDP, the plugin
+falls back to the old HTTP entity calls, but the tower will be noticeably
+slower. The HTTP entity names are still available for manual tests.
+
+---
+
 ## HTTP API
 
-The firmware's ESPHome web server accepts one POST per entity. This is the
-whole protocol:
+The firmware's ESPHome web server accepts one POST per entity. The plugin uses
+this path for configuration (pages, orientation, brightness, WiFi, test flags);
+the realtime values normally arrive over UDP. For manual tests:
 
 ```bash
 # flag: NONE, GREEN, YELLOW, BLUE, WHITE, CHECKERED, RED, BLACK, ORANGE

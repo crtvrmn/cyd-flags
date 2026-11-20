@@ -4,12 +4,12 @@
 # Board: ESP32-2432S028R (2.8" 320x240 ILI9341, ESP32-WROOM-32)
 #        Portrait 240x320 by default; set display_rotation: "90" for landscape.
 #
-# The display is driven by a SimHub plugin (CydFlags.dll) over the ESPHome
-# web server REST API:
+# The display is driven by a SimHub plugin (CydFlags.dll). Realtime values
+# (flag, game, timing, logic, rev, delta, heartbeat) arrive on UDP 18512;
+# HTTP port 80 is used for configuration and manual tests:
 #
-#   POST /select/flag/set?option=YELLOW
-#   POST /text/game/set?value=Assetto%20Corsa
-#   POST /number/heartbeat/set?value=42
+#   POST /text/features/set?value=flags,clock,tower,logic,rev
+#   POST /text/orientation/set?value=portrait
 #   POST /number/brightness/set?value=80
 #
 # Entity names are deliberately lowercase and match the URLs above.
@@ -85,6 +85,32 @@ web_server:
   port: 80
   # version 2 is the default. The REST paths used above are the same in v2/v3.
 
+# Fast realtime path: the SimHub plugin sends small UDP datagrams (one type
+# per packet) so the 20 Hz tower/rev data does not pay HTTP request overhead.
+# The first byte is the type, the rest is the payload, optionally newline
+# terminated: f flag, g game, t timing, l logic, r rev, d delta, h heartbeat.
+udp:
+  id: udp_fast
+  port: 18512
+  on_receive:
+    - lambda: |-
+        if (data.empty()) return;
+        std::string payload(data.begin() + 1, data.end());
+        if (!payload.empty() && payload.back() == '\n') payload.pop_back();
+        switch (data[0]) {
+          case 'f': id(flag_state) = payload; break;
+          case 'g': id(game_name) = payload; break;
+          case 't': id(timing_raw) = payload; break;
+          case 'l': id(logic_raw) = payload; break;
+          case 'r': id(rev_raw) = payload; break;
+          case 'd': id(delta_raw) = payload; break;
+          case 'h':
+            id(link_seen) = true;
+            id(link_last_ms) = millis();
+            break;
+          default: break;
+        }
+
 ota:
   - platform: esphome
     password: !secret ota_password
@@ -152,7 +178,7 @@ display:
       // for a real race session; practice/qualifying/menus fall back to the
       // clock. Color codes: -=none, G=green, R=red, P=purple.
       const std::string timing = id(timing_raw);
-      const std::string logic_text = id(logic).state;
+      const std::string logic_text = id(logic_raw);
 
       // Rev payload: gear~speed_kmh~rpm~max_rpm~redline~rpm_percent~blink.
       const std::string rev_text = id(rev_raw);
@@ -195,7 +221,7 @@ display:
       // The rev page needs a faster refresh than the static clock/flag pages.
       // 50 ms matches the plugin's 20 Hz rev payload; the partial redraw below
       // keeps the SPI traffic small. The other pages only need 3.3 Hz.
-      id(screen).set_update_interval(rev_page ? 50 : 300);
+      id(screen).set_update_interval(rev_page ? 50 : ((race || logic_page) ? 80 : 300));
 
       // Pages the corner navigation may visit. Keep these rules in sync with
       // the on_touch lambda below.
@@ -742,7 +768,7 @@ touchscreen:
           const bool touch_link = id(link_seen) && (millis() - id(link_last_ms) < 5000);
           const bool touch_flag = id(feat_flags) && touch_link && id(flag_state) != "NONE";
           const bool touch_race = id(race_mode) && touch_link && !touch_flag
-                                  && (!id(timing_raw).empty() || !id(logic).state.empty());
+                                  && (!id(timing_raw).empty() || !id(logic_raw).empty());
           if (!touch_race && !touch_flag && id(feat_clock)
               && x < W / 2 && y < H / 2) {
             id(alarm_edit) = true;
@@ -764,7 +790,7 @@ touchscreen:
           const int kPageCount = 4;
           const bool available[kPageCount] = {
               id(race_mode) && id(feat_tower) && !id(timing_raw).empty(),
-              id(race_mode) && id(feat_logic) && !id(logic).state.empty(),
+              id(race_mode) && id(feat_logic) && !id(logic_raw).empty(),
               id(feat_clock),
               id(feat_rev) && !id(rev_raw).empty() && id(link_seen),
           };
@@ -875,6 +901,10 @@ globals:
     restore_value: false
     initial_value: "false"
   - id: timing_raw
+    type: std::string
+  - id: logic_raw
+    type: std::string
+  - id: delta_raw
     type: std::string
     restore_value: false
     initial_value: '""'
@@ -1055,6 +1085,9 @@ text:
     mode: text
     min_length: 0
     max_length: 255
+    on_value:
+      - lambda: |-
+          id(logic_raw) = x;
   - platform: template
     name: delta
     id: delta
@@ -1062,6 +1095,9 @@ text:
     mode: text
     min_length: 0
     max_length: 16
+    on_value:
+      - lambda: |-
+          id(delta_raw) = x;
   - platform: template
     name: rev
     id: rev

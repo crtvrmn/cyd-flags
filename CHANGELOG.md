@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.5
+
+* **UDP fast path.** Realtime flags, game name, tower, rev, race-logic, delta
+  and the heartbeat no longer travel over HTTP. The plugin sends one small
+  datagram per value to UDP port 18512; the firmware decodes it without HTTP
+  parsing. HTTP is still used for configuration (features, orientation,
+  brightness, WiFi) and manual tests.
+* **Much faster tower.** The plugin builds the tower at 20 Hz (was 2.5 Hz) and
+  the display redraws it at 80 ms (12.5 Hz, was 300 ms). Rev stays at 20 Hz,
+  race logic builds at 10 Hz. The clock/flag screens keep their 300 ms cadence.
+* **No more 0.7.4 partial-update bottleneck for the tower**: the full tower
+  frame is intentionally redrawn at 12.5 Hz; the rev page still uses the
+  partial redraw from 0.7.4.
+* Plugin 0.7.5 and firmware 0.7.5 belong together. If the UDP port is blocked
+  the plugin falls back to HTTP, but the tower will be slower again.
+* New `UdpPort` per-display setting (default 18512).
+
 ## 0.7.4
 
 * **Rev page partial redraw at 20 Hz.** The rev-limiter page no longer repaints

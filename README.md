@@ -34,14 +34,15 @@ suffix while you are in the pit lane. The IP address is shown for the first
 15 seconds after boot. Every display can be mounted **portrait or landscape**;
 the plugin rotates it at runtime, so one firmware image works for both.
 
-The display redraws on a fixed 300 ms cadence (the rev-limiter page uses
-50 ms with partial updates), so rapid flag changes are coalesced instead of building up a laggy queue. Page selection, backlight and
-WiFi are configured per display; the race data itself is shared.
+Realtime data goes over **UDP port 18512**: the tower is built at 20 Hz and
+drawn at 12.5 Hz, the rev page at 20 Hz, and the clock/flag screens at 300 ms.
+Configuration (pages, orientation, brightness, WiFi) still uses HTTP. This is
+the fast path; there is no cloud service in between.
 
 ```
-                                    ┌──HTTP POST──► ESP32 CYD #1
-game ──telemetry──► SimHub ──► CydFlags plugin ──┼──HTTP POST──► ESP32 CYD #2
-                                    └──HTTP POST──► ESP32 CYD #3
+                                 ┌──UDP 18512 (realtime)──► ESP32 CYD #1
+game ──telemetry──► SimHub ──► CydFlags plugin ──┼──UDP 18512──────────────► ESP32 CYD #2
+                                 └──HTTP 80 (config)──────► ESP32 CYD #3
 ```
 
 ---
@@ -128,11 +129,11 @@ model. See [Panel variants](docs/cyd-flags.md#panel-variants) for `ILI9341`,
 ## Repository layout
 
 ```
-firmware/cyd-flags.yaml          ESPHome firmware: display + REST API
+firmware/cyd-flags.yaml          ESPHome firmware: display + UDP fast path + HTTP config
 firmware/secrets.yaml.example    WiFi / fallback AP / OTA placeholders
 firmware/fonts/                  DejaVu Sans Condensed Bold + license
 src/CydFlags/                    SimHub plugin (C#, .NET Framework 4.8)
-  CydFlagsPlugin.cs              lifecycle, per-display worker, HTTP push
+  CydFlagsPlugin.cs              lifecycle, per-display worker, UDP/HTTP push
   CydFlagsSettings.cs            global + per-display settings and migration
   FlagReader.cs                  StatusDataBase flag reads
   FlagModel.cs                   flag priority + name parsing (unit-tested)
@@ -140,7 +141,8 @@ src/CydFlags/                    SimHub plugin (C#, .NET Framework 4.8)
   RaceLogicBuilder.cs            lap/sector/delta payload
   RevBuilder.cs                  gear/speed/RPM payload
   DeltaTracker.cs                previous-lap delta by track position
-  DeviceClient.cs                POST client for the ESPHome web server
+  DeviceClient.cs                POST client for configuration
+  UdpLink.cs                     fast realtime sender (one datagram per value)
   UI/                            code-built WPF settings page
 tests/                           pure C# tests for FlagModel + DeltaTracker
 docs/cyd-flags.md                full technical reference
@@ -214,9 +216,18 @@ the .NET 8 SDK and no SimHub installation.
 
 ---
 
+## Fast UDP protocol
+
+The plugin sends small UDP datagrams to port **18512**. The first byte is the
+type (`f` flag, `g` game, `t` tower, `l` logic, `r` rev, `d` delta, `h`
+heartbeat), the rest is UTF-8 text. This is what makes the tower and rev page
+fast; the HTTP entities below remain available for configuration and manual
+tests.
+
 ## HTTP API
 
-The firmware exposes standard ESPHome template entities. The plugin uses:
+The firmware exposes standard ESPHome template entities. The plugin uses HTTP
+for configuration:
 
 ```text
 POST /select/flag/set?option=YELLOW
