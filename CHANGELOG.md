@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.7.0
+
+* **Multiple CYD displays at once.** Each display has its own name, host/port,
+  enabled flag, page selection, `LAST`/`BEST` choice, brightness/dim behaviour
+  and WiFi provisioning.
+* The plugin computes the flag, game, race mode, timing and race-logic state
+  once, then sends the applicable parts to every enabled display. Timing is
+  skipped for displays without the tower page, race logic for displays without
+  the logic page.
+* One worker thread loops over the enabled displays. A missing or offline
+  display backs off by itself and does not delay the others; heartbeats and
+  brightness are per display.
+* Settings panel: **Displays** dropdown plus **Add device** / **Remove
+  device**. All device-specific controls now edit the selected display; the
+  heartbeat, minimum send interval and request logging stay global. Status
+  lines and the `CydFlagsLinked`/`CydFlagsDevice` properties follow the
+  selected display.
+* **Migration:** existing 0.6.0 settings are converted into one display named
+  `Display 1`, preserving the old host, port, pages, brightness and WiFi SSID.
+  A fresh installation also starts with one display.
+* **Test the flags** still works without a game and now applies to all enabled
+  displays. **Open display web UI**, **Save WiFi** and **Push brightness now**
+  act on the selected display. The WiFi password is never persisted on the PC.
+* Version bumped to 0.7.0. No firmware changes; the HTTP API is unchanged.
+
 ## 0.6.0
 
 * Plugin **Pages on the display** checkboxes (flags, clock, tower, race logic);

@@ -13,6 +13,10 @@ namespace CydFlags.UI
     /// Settings panel. Built in code rather than XAML on purpose: the project
     /// then compiles with a plain C# compiler (no XamlBuildTask, no generated
     /// .g.cs), which makes it easy to build and verify outside Visual Studio.
+    ///
+    /// 0.7.0 supports several displays. The selector at the top decides which
+    /// display the device-specific controls edit; the game state itself is
+    /// shared by every enabled display.
     /// </summary>
     public sealed class CydFlagsSettingsView : UserControl
     {
@@ -22,22 +26,30 @@ namespace CydFlags.UI
         private TextBlock _linkLine;
         private TextBlock _detailLine;
 
+        // Global settings.
         private CheckBox _enabled;
-        private TextBox _host;
-        private TextBox _port;
         private TextBox _heartbeat;
         private TextBox _minInterval;
+        private CheckBox _logRequests;
+
+        // Device selection.
+        private ComboBox _deviceCombo;
+        private Button _removeDevice;
+
+        // Selected-display settings.
+        private CydFlagsDeviceSettings _device;
+        private CheckBox _deviceEnabled;
+        private TextBox _deviceName;
+        private TextBox _host;
+        private TextBox _port;
         private CheckBox _showBestLap;
         private CheckBox _applyBrightness;
         private CheckBox _dimWhenNoGame;
         private Slider _brightness;
-        private CheckBox _logRequests;
-
         private CheckBox _pageFlags;
         private CheckBox _pageClock;
         private CheckBox _pageTower;
         private CheckBox _pageLogic;
-
         private TextBox _wifiSsid;
         private PasswordBox _wifiPassword;
         private TextBlock _wifiStatus;
@@ -47,6 +59,8 @@ namespace CydFlags.UI
 
         private bool _dirty;
         private DateTime _lastApplyUtc;
+        private bool _building;
+        private bool _updatingSelection;
 
         public CydFlagsSettingsView(CydFlagsPlugin plugin)
         {
@@ -65,63 +79,270 @@ namespace CydFlags.UI
 
         private void Build()
         {
-            var root = new StackPanel { Margin = new Thickness(12) };
-
-            root.Children.Add(new TextBlock
+            _building = true;
+            try
             {
-                Text = "CYD Flags " + CydFlagsPlugin.Version,
-                FontSize = 18,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 4)
-            });
+                CydFlagsSettings settings = Settings;
+                if (settings == null)
+                {
+                    Content = new TextBlock { Text = "CYD Flags is not initialised yet.", Margin = new Thickness(12) };
+                    return;
+                }
 
-            root.Children.Add(new TextBlock
+                settings.Clamp();
+                CydFlagsDeviceSettings[] devices = settings.Devices.ToArray();
+                int selected = _plugin.SelectedDeviceIndex;
+                if (selected < 0 || selected >= devices.Length) selected = 0;
+                _plugin.SelectedDeviceIndex = selected;
+                _device = devices.Length > 0 ? devices[selected] : null;
+                CydFlagsDeviceSettings device = _device;
+
+                var root = new StackPanel { Margin = new Thickness(12) };
+
+                root.Children.Add(new TextBlock
+                {
+                    Text = "CYD Flags " + CydFlagsPlugin.Version,
+                    FontSize = 18,
+                    FontWeight = FontWeights.SemiBold,
+                    Margin = new Thickness(0, 0, 0, 4)
+                });
+
+                root.Children.Add(new TextBlock
+                {
+                    Text = "Shows sim racing flags on one or more Cheap Yellow Display (ESP32-2432S028) panels " +
+                           "running the cyd-flags ESPHome firmware. SimHub pushes each change to every enabled " +
+                           "display's built-in web server - no MQTT and no Home Assistant needed.\n\n" +
+                           "Add the displays below and pick one to edit. The same race data goes to all of them; " +
+                           "pages, brightness and WiFi are configured per display.",
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 660,
+                    Margin = new Thickness(0, 0, 0, 8)
+                });
+
+                _linkLine = new TextBlock
+                {
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 13,
+                    FontWeight = FontWeights.SemiBold,
+                    Margin = new Thickness(0, 0, 0, 2)
+                };
+                root.Children.Add(_linkLine);
+
+                _detailLine = new TextBlock
+                {
+                    FontFamily = new FontFamily("Consolas"),
+                    FontSize = 12,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 10)
+                };
+                root.Children.Add(_detailLine);
+
+                // ---------------- global plugin settings -----------------
+                AddSection(root, "Plugin");
+                _enabled = AddCheck(root, "Enable CYD Flags (all displays)",
+                    () => Settings.Enabled, v => Settings.Enabled = v);
+                _heartbeat = AddText(root, "Heartbeat interval (ms)",
+                    () => Settings.HeartbeatMs.ToString(CultureInfo.InvariantCulture),
+                    v => Settings.HeartbeatMs = ParseInt(v, Settings.HeartbeatMs), 70);
+                _minInterval = AddText(root, "Minimum gap between flag packets (ms)",
+                    () => Settings.MinSendIntervalMs.ToString(CultureInfo.InvariantCulture),
+                    v => Settings.MinSendIntervalMs = ParseInt(v, Settings.MinSendIntervalMs), 70);
+
+                root.Children.Add(new TextBlock
+                {
+                    Text = "The heartbeat tells each display that the PC is still alive; without one it shows " +
+                           "NO LINK after a few seconds. A small gap between flag packets avoids flicker during " +
+                           "rapid flag changes.",
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 620,
+                    FontSize = 11,
+                    Opacity = 0.75,
+                    Margin = new Thickness(0, 2, 0, 4)
+                });
+
+                // ---------------- device selection -----------------------
+                AddSection(root, "Displays");
+                var selector = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Margin = new Thickness(0, 3, 0, 3)
+                };
+                selector.Children.Add(new TextBlock
+                {
+                    Text = "Configured display",
+                    Width = 260,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+
+                _deviceCombo = new ComboBox
+                {
+                    Width = 220,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                foreach (CydFlagsDeviceSettings entry in devices)
+                    _deviceCombo.Items.Add(entry.Name);
+
+                _updatingSelection = true;
+                _deviceCombo.SelectedIndex = selected;
+                _updatingSelection = false;
+                _deviceCombo.SelectionChanged += OnDeviceSelected;
+                selector.Children.Add(_deviceCombo);
+
+                Button add = NewButton("Add device", 8);
+                add.Click += (s, e) =>
+                {
+                    Apply();
+                    _plugin.AddDevice();
+                    Build();
+                };
+                selector.Children.Add(add);
+
+                _removeDevice = NewButton("Remove device", 8);
+                _removeDevice.IsEnabled = devices.Length > 1;
+                _removeDevice.Click += (s, e) =>
+                {
+                    Apply();
+                    if (!_plugin.RemoveSelectedDevice())
+                    {
+                        MessageBox.Show("At least one display must remain.",
+                            "CYD Flags", MessageBoxButton.OK, MessageBoxImage.Information);
+                        return;
+                    }
+                    Build();
+                };
+                selector.Children.Add(_removeDevice);
+                root.Children.Add(selector);
+
+                root.Children.Add(new TextBlock
+                {
+                    Text = "Each display has its own address, pages and backlight. The settings below always " +
+                           "belong to the display selected above.",
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 620,
+                    FontSize = 11,
+                    Opacity = 0.75,
+                    Margin = new Thickness(0, 2, 0, 4)
+                });
+
+                if (device == null)
+                {
+                    root.Children.Add(new TextBlock
+                    {
+                        Text = "No display configured. Use Add device.",
+                        FontWeight = FontWeights.SemiBold,
+                        Margin = new Thickness(0, 8, 0, 8)
+                    });
+                }
+                else
+                {
+                    BuildDeviceSection(root, device);
+                }
+
+                // ---------------- flag test (all displays) ----------------
+                AddSection(root, "Test the flags (all displays)");
+                var testPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
+                testPanel.Children.Add(new TextBlock
+                {
+                    Text = "Flag",
+                    Width = 260,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                _testFlag = new ComboBox { Width = 180 };
+                foreach (FlagKind kind in new[]
+                {
+                    FlagKind.None, FlagKind.Green, FlagKind.Yellow, FlagKind.Blue,
+                    FlagKind.White, FlagKind.Checkered, FlagKind.Red, FlagKind.Black, FlagKind.Orange
+                })
+                {
+                    _testFlag.Items.Add(FlagModel.ToOption(kind));
+                }
+                _testFlag.SelectedItem = "YELLOW";
+                testPanel.Children.Add(_testFlag);
+                root.Children.Add(testPanel);
+
+                Button sendTest = AddButton(root, "Show on all displays for 10 seconds");
+                sendTest.Click += (s, e) => ShowTestFlag();
+                Button stopTest = AddButton(root, "Stop test");
+                stopTest.Click += (s, e) =>
+                {
+                    _plugin.ClearTestFlag();
+                    if (_testStatus != null) _testStatus.Text = "Test stopped; normal SimHub data resumes.";
+                };
+
+                _testStatus = new TextBlock
+                {
+                    Text = "The test overrides the game for 10 seconds on every enabled display, so you can check " +
+                           "each flag without driving.",
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 620,
+                    FontSize = 11,
+                    Opacity = 0.75,
+                    Margin = new Thickness(0, 2, 0, 4)
+                };
+                root.Children.Add(_testStatus);
+
+                // ---------------- diagnostics -----------------------------
+                AddSection(root, "Diagnostics");
+                _logRequests = AddCheck(root, "Log every HTTP request (chatty)",
+                    () => Settings.LogRequests, v => Settings.LogRequests = v);
+
+                Button test = AddButton(root, "Test connection (all displays)");
+                test.Click += (s, e) =>
+                {
+                    Apply();
+                    _plugin.TestConnection();
+                    RefreshStatus();
+                };
+
+                root.Children.Add(new TextBlock
+                {
+                    Text = "SimHub properties: CydFlagsLinked, CydFlagsFlag, CydFlagsGame, CydFlagsDevice, CydFlagsError " +
+                           "(status follows the selected display). Action: CydFlagsTest. Log lines are prefixed with \"CYD Flags\".",
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 620,
+                    FontSize = 11,
+                    Opacity = 0.75,
+                    Margin = new Thickness(0, 12, 0, 0)
+                });
+
+                Content = new ScrollViewer
+                {
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    Content = root
+                };
+            }
+            finally
             {
-                Text = "Shows sim racing flags on a Cheap Yellow Display (ESP32-2432S028) running the " +
-                       "cyd-flags ESPHome firmware. SimHub pushes one HTTP POST per change to the display's " +
-                       "built-in web server - no MQTT and no Home Assistant needed.\n\n" +
-                       "The display must be reachable by name (e.g. cyd-flags.local) or by IP address. " +
-                       "Firmware entity ids: flag, game, race, timing, lap_label, logic, features, " +
-                       "wifi_ssid, wifi_password, wifi_connect, heartbeat, brightness.",
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 660,
-                Margin = new Thickness(0, 0, 0, 8)
-            });
+                _building = false;
+            }
+        }
 
-            _linkLine = new TextBlock
+        private void BuildDeviceSection(Panel root, CydFlagsDeviceSettings device)
+        {
+            AddSection(root, "Display: " + device.Name);
+
+            _deviceEnabled = AddCheck(root, "Enable this display",
+                () => device.Enabled, v => device.Enabled = v);
+            _deviceName = AddText(root, "Name", () => device.Name, v =>
             {
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 13,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 0, 0, 2)
-            };
-            root.Children.Add(_linkLine);
+                device.Name = v;
+                UpdateComboName();
+            }, 300);
 
-            _detailLine = new TextBlock
-            {
-                FontFamily = new FontFamily("Consolas"),
-                FontSize = 12,
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 10)
-            };
-            root.Children.Add(_detailLine);
-
-            // ---------------- connection ----------------------------------
-            AddSection(root, "Display");
-            _enabled = AddCheck(root, "Enable CYD Flags", () => Settings.Enabled, v => Settings.Enabled = v);
-
-            _host = AddText(root, "Host or IP", () => Settings.Host, v => Settings.Host = v, 300);
-            _port = AddText(root, "Port", () => Settings.Port.ToString(CultureInfo.InvariantCulture),
+            _host = AddText(root, "Host or IP", () => device.Host, v => device.Host = v, 300);
+            _port = AddText(root, "Port", () => device.Port.ToString(CultureInfo.InvariantCulture),
                 v =>
                 {
                     int port;
                     if (int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out port))
-                        Settings.Port = port;
+                        device.Port = port;
                 }, 70);
 
             Button open = AddButton(root, "Open display web UI");
             open.Click += (s, e) =>
             {
+                Apply();
                 try
                 {
                     Process.Start(new ProcessStartInfo(_plugin.DeviceWebUrl) { UseShellExecute = true });
@@ -133,12 +354,13 @@ namespace CydFlags.UI
                 }
             };
 
-            // ---------------- pages ---------------------------------------
-            AddSection(root, "Pages on the display");
-            _pageFlags = AddCheck(root, "Flags", () => Settings.PageFlags, v => Settings.PageFlags = v);
-            _pageClock = AddCheck(root, "Clock", () => Settings.PageClock, v => Settings.PageClock = v);
-            _pageTower = AddCheck(root, "Relative tower (ahead/behind)", () => Settings.PageTower, v => Settings.PageTower = v);
-            _pageLogic = AddCheck(root, "Race logic (current lap, sectors, delta)", () => Settings.PageLogic, v => Settings.PageLogic = v);
+            AddSection(root, "Pages on this display");
+            _pageFlags = AddCheck(root, "Flags", () => device.PageFlags, v => device.PageFlags = v);
+            _pageClock = AddCheck(root, "Clock", () => device.PageClock, v => device.PageClock = v);
+            _pageTower = AddCheck(root, "Relative tower (ahead/behind)",
+                () => device.PageTower, v => device.PageTower = v);
+            _pageLogic = AddCheck(root, "Race logic (current lap, sectors, delta)",
+                () => device.PageLogic, v => device.PageLogic = v);
 
             root.Children.Add(new TextBlock
             {
@@ -151,36 +373,16 @@ namespace CydFlags.UI
                 Margin = new Thickness(0, 2, 0, 4)
             });
 
-            // ---------------- traffic -------------------------------------
-            AddSection(root, "Traffic");
-            _heartbeat = AddText(root, "Heartbeat interval (ms)", () => Settings.HeartbeatMs.ToString(CultureInfo.InvariantCulture),
-                v => Settings.HeartbeatMs = ParseInt(v, Settings.HeartbeatMs), 70);
-            _minInterval = AddText(root, "Minimum gap between flag packets (ms)",
-                () => Settings.MinSendIntervalMs.ToString(CultureInfo.InvariantCulture),
-                v => Settings.MinSendIntervalMs = ParseInt(v, Settings.MinSendIntervalMs), 70);
-
             _showBestLap = AddCheck(root, "Race tower: show best lap instead of last lap",
-                () => Settings.ShowBestLap, v => Settings.ShowBestLap = v);
+                () => device.ShowBestLap, v => device.ShowBestLap = v);
 
-            root.Children.Add(new TextBlock
-            {
-                Text = "The heartbeat tells the display that the PC is still alive; without one it shows NO LINK " +
-                       "after a few seconds. A small gap between flag packets avoids flicker during rapid flag changes.",
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 620,
-                FontSize = 11,
-                Opacity = 0.75,
-                Margin = new Thickness(0, 2, 0, 4)
-            });
-
-            // ---------------- backlight -----------------------------------
-            AddSection(root, "Backlight");
-            _applyBrightness = AddCheck(root, "Set display brightness from SimHub", () => Settings.ApplyBrightness,
-                v => Settings.ApplyBrightness = v);
+            AddSection(root, "Backlight on this display");
+            _applyBrightness = AddCheck(root, "Set display brightness from SimHub",
+                () => device.ApplyBrightness, v => device.ApplyBrightness = v);
             _dimWhenNoGame = AddCheck(root, "Turn backlight off (0%) while no game is running",
-                () => Settings.DimWhenNoGame, v => Settings.DimWhenNoGame = v);
-            _brightness = AddSlider(root, "Brightness while a game is running", 5, 100, 1, () => Settings.Brightness,
-                v => Settings.Brightness = (int)Math.Round(v), "0");
+                () => device.DimWhenNoGame, v => device.DimWhenNoGame = v);
+            _brightness = AddSlider(root, "Brightness while a game is running", 5, 100, 1,
+                () => device.Brightness, v => device.Brightness = (int)Math.Round(v), "0");
 
             root.Children.Add(new TextBlock
             {
@@ -202,21 +404,20 @@ namespace CydFlags.UI
                 RefreshStatus();
             };
 
-            // ---------------- WiFi provisioning ---------------------------
-            AddSection(root, "WiFi on the display");
-            _wifiSsid = AddText(root, "Network name (SSID)", () => Settings.WifiSsid,
-                v => Settings.WifiSsid = v ?? string.Empty, 300);
+            AddSection(root, "WiFi on this display");
+            _wifiSsid = AddText(root, "Network name (SSID)", () => device.WifiSsid,
+                v => device.WifiSsid = v ?? string.Empty, 300);
             _wifiPassword = AddPassword(root, "Password", 300);
 
-            Button saveWifi = AddButton(root, "Save WiFi on display and connect");
+            Button saveWifi = AddButton(root, "Save WiFi on this display and connect");
             saveWifi.Click += (s, e) =>
             {
                 Apply();
-                string error = _plugin.SaveWifiToDisplay(_wifiSsid.Text, _wifiPassword.Password);
+                string error = _plugin.SaveWifiToDisplay(device, _wifiSsid.Text, _wifiPassword.Password);
                 if (_wifiStatus != null)
                 {
                     _wifiStatus.Text = string.IsNullOrEmpty(error)
-                        ? "Credentials written to the display. It should connect within a few seconds."
+                        ? "Credentials written to " + device.Name + ". It should connect within a few seconds."
                         : error;
                     _wifiStatus.Foreground = new SolidColorBrush(string.IsNullOrEmpty(error)
                         ? Color.FromRgb(0x33, 0xC4, 0x6E)
@@ -226,7 +427,7 @@ namespace CydFlags.UI
 
             _wifiStatus = new TextBlock
             {
-                Text = "Saved in the display's NVS: survives OTA updates and reboots. A full USB/factory flash " +
+                Text = "Saved in this display's NVS: survives OTA updates and reboots. A full USB/factory flash " +
                        "erases it again. The password is never stored on the PC.",
                 TextWrapping = TextWrapping.Wrap,
                 MaxWidth = 620,
@@ -235,78 +436,39 @@ namespace CydFlags.UI
                 Margin = new Thickness(0, 2, 0, 4)
             };
             root.Children.Add(_wifiStatus);
+        }
 
-            // ---------------- flag test -----------------------------------
-            AddSection(root, "Test the flags");
-            var testPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
-            testPanel.Children.Add(new TextBlock
+        private void OnDeviceSelected(object sender, SelectionChangedEventArgs e)
+        {
+            if (_building || _updatingSelection) return;
+
+            int index = _deviceCombo != null ? _deviceCombo.SelectedIndex : -1;
+            if (index < 0) return;
+            if (index == _plugin.SelectedDeviceIndex) return;
+
+            // Commit the controls of the display that was selected before
+            // rebuilding them for the new display.
+            Apply();
+            _plugin.SelectedDeviceIndex = index;
+            Build();
+        }
+
+        private void UpdateComboName()
+        {
+            if (_deviceCombo == null) return;
+            int index = _deviceCombo.SelectedIndex;
+            if (index < 0 || index >= _deviceCombo.Items.Count) return;
+
+            _updatingSelection = true;
+            try
             {
-                Text = "Flag",
-                Width = 260,
-                VerticalAlignment = VerticalAlignment.Center
-            });
-            _testFlag = new ComboBox { Width = 180 };
-            foreach (FlagKind kind in new[]
-            {
-                FlagKind.None, FlagKind.Green, FlagKind.Yellow, FlagKind.Blue,
-                FlagKind.White, FlagKind.Checkered, FlagKind.Red, FlagKind.Black, FlagKind.Orange
-            })
-            {
-                _testFlag.Items.Add(FlagModel.ToOption(kind));
+                _deviceCombo.Items[index] = _device != null ? _device.Name : string.Empty;
+                _deviceCombo.SelectedIndex = index;
             }
-            _testFlag.SelectedItem = "YELLOW";
-            testPanel.Children.Add(_testFlag);
-            root.Children.Add(testPanel);
-
-            Button sendTest = AddButton(root, "Show for 10 seconds");
-            sendTest.Click += (s, e) => ShowTestFlag();
-            Button stopTest = AddButton(root, "Stop test");
-            stopTest.Click += (s, e) =>
+            finally
             {
-                _plugin.ClearTestFlag();
-                _testStatus.Text = "Test stopped; normal SimHub data resumes.";
-            };
-
-            _testStatus = new TextBlock
-            {
-                Text = "The test overrides the game for 10 seconds, so you can check every flag without driving.",
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 620,
-                FontSize = 11,
-                Opacity = 0.75,
-                Margin = new Thickness(0, 2, 0, 4)
-            };
-            root.Children.Add(_testStatus);
-
-            // ---------------- diagnostics ---------------------------------
-            AddSection(root, "Diagnostics");
-            _logRequests = AddCheck(root, "Log every HTTP request (chatty)", () => Settings.LogRequests, v => Settings.LogRequests = v);
-
-            Button test = AddButton(root, "Test connection");
-            test.Click += (s, e) =>
-            {
-                Apply();
-                _plugin.TestConnection();
-                RefreshStatus();
-            };
-
-            root.Children.Add(new TextBlock
-            {
-                Text = "SimHub properties: CydFlagsLinked, CydFlagsFlag, CydFlagsGame, CydFlagsDevice, CydFlagsError. " +
-                       "Action: CydFlagsTest. Log lines are prefixed with \"CYD Flags\".",
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 620,
-                FontSize = 11,
-                Opacity = 0.75,
-                Margin = new Thickness(0, 12, 0, 0)
-            });
-
-            Content = new ScrollViewer
-            {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                Content = root
-            };
+                _updatingSelection = false;
+            }
         }
 
         private static int ParseInt(string text, int fallback)
@@ -327,35 +489,48 @@ namespace CydFlags.UI
 
         private void Apply()
         {
-            if (_plugin == null || Settings == null)
+            if (_plugin == null || Settings == null || _building)
             {
                 _dirty = false;
                 return;
             }
 
-            Settings.Enabled = _enabled.IsChecked == true;
-            Settings.Host = (_host.Text ?? string.Empty).Trim();
+            Settings.Enabled = _enabled != null && _enabled.IsChecked == true;
+            if (_heartbeat != null)
+                Settings.HeartbeatMs = ParseInt(_heartbeat.Text, Settings.HeartbeatMs);
+            if (_minInterval != null)
+                Settings.MinSendIntervalMs = ParseInt(_minInterval.Text, Settings.MinSendIntervalMs);
+            Settings.LogRequests = _logRequests != null && _logRequests.IsChecked == true;
 
-            int value;
-            if (int.TryParse((_port.Text ?? string.Empty).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
-                Settings.Port = value;
-            if (int.TryParse((_heartbeat.Text ?? string.Empty).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
-                Settings.HeartbeatMs = value;
-            if (int.TryParse((_minInterval.Text ?? string.Empty).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
-                Settings.MinSendIntervalMs = value;
+            CydFlagsDeviceSettings device = _device;
+            if (device != null)
+            {
+                device.Enabled = _deviceEnabled != null && _deviceEnabled.IsChecked == true;
+                if (_deviceName != null) device.Name = (_deviceName.Text ?? string.Empty).Trim();
+                if (_host != null) device.Host = (_host.Text ?? string.Empty).Trim();
 
-            Settings.ShowBestLap = _showBestLap.IsChecked == true;
+                int value;
+                if (_port != null
+                    && int.TryParse((_port.Text ?? string.Empty).Trim(), NumberStyles.Integer,
+                        CultureInfo.InvariantCulture, out value))
+                {
+                    device.Port = value;
+                }
 
-            Settings.PageFlags = _pageFlags.IsChecked == true;
-            Settings.PageClock = _pageClock.IsChecked == true;
-            Settings.PageTower = _pageTower.IsChecked == true;
-            Settings.PageLogic = _pageLogic.IsChecked == true;
-            Settings.WifiSsid = (_wifiSsid.Text ?? string.Empty).Trim();
+                device.ShowBestLap = _showBestLap != null && _showBestLap.IsChecked == true;
 
-            Settings.ApplyBrightness = _applyBrightness.IsChecked == true;
-            Settings.DimWhenNoGame = _dimWhenNoGame.IsChecked == true;
-            Settings.Brightness = (int)Math.Round(_brightness.Value);
-            Settings.LogRequests = _logRequests.IsChecked == true;
+                device.PageFlags = _pageFlags != null && _pageFlags.IsChecked == true;
+                device.PageClock = _pageClock != null && _pageClock.IsChecked == true;
+                device.PageTower = _pageTower != null && _pageTower.IsChecked == true;
+                device.PageLogic = _pageLogic != null && _pageLogic.IsChecked == true;
+
+                if (_wifiSsid != null)
+                    device.WifiSsid = (_wifiSsid.Text ?? string.Empty).Trim();
+
+                device.ApplyBrightness = _applyBrightness != null && _applyBrightness.IsChecked == true;
+                device.DimWhenNoGame = _dimWhenNoGame != null && _dimWhenNoGame.IsChecked == true;
+                if (_brightness != null) device.Brightness = (int)Math.Round(_brightness.Value);
+            }
 
             _plugin.ApplySettings();
             _dirty = false;
@@ -372,7 +547,8 @@ namespace CydFlags.UI
             string option = _testFlag.SelectedItem as string;
             FlagKind kind = FlagModel.ParseName(option);
             _plugin.ShowTestFlag(kind, 10);
-            _testStatus.Text = "Showing " + FlagModel.ToOption(kind) + " for 10 seconds.";
+            if (_testStatus != null)
+                _testStatus.Text = "Showing " + FlagModel.ToOption(kind) + " on all enabled displays for 10 seconds.";
         }
 
         private void RefreshStatus()
@@ -382,7 +558,12 @@ namespace CydFlags.UI
             try
             {
                 bool linked = _plugin.Linked;
-                _linkLine.Text = linked ? "LINK      online" : "LINK      offline";
+                int index = _plugin.SelectedDeviceIndex;
+                int count = _plugin.DeviceCount;
+                string name = _device != null ? _device.Name : "-";
+
+                _linkLine.Text = (linked ? "LINK online" : "LINK offline")
+                    + "   -   " + name + " (" + (index + 1) + "/" + count + ")";
                 _linkLine.Foreground = new SolidColorBrush(linked
                     ? Color.FromRgb(0x33, 0xC4, 0x6E)
                     : Color.FromRgb(0xE0, 0x4B, 0x3C));
@@ -395,16 +576,21 @@ namespace CydFlags.UI
                 string url = _plugin.DeviceUrl;
                 if (string.IsNullOrEmpty(url)) url = _plugin.DescribeTarget();
                 string game = string.IsNullOrEmpty(_plugin.CurrentGame) ? "-" : _plugin.CurrentGame;
+                string error = string.IsNullOrEmpty(_plugin.LastError) ? "-" : _plugin.LastError;
 
                 _detailLine.Text = string.Format(
                     CultureInfo.InvariantCulture,
-                    "url       {0}\nlast      {1}    requests {2}\nflag      {3,-10} game {4}\nerror     {5}",
+                    "display   {0} ({1}/{2})\nurl       {3}\nlast      {4}    requests {5}\n" +
+                    "flag      {6,-10} game {7}\nerror     {8}",
+                    name,
+                    index + 1,
+                    count,
                     url,
                     lastText,
                     _plugin.RequestsSent,
                     FlagModel.ToOption(_plugin.CurrentFlag),
                     game,
-                    string.IsNullOrEmpty(_plugin.LastError) ? "-" : _plugin.LastError);
+                    error);
             }
             catch (Exception)
             {
@@ -569,15 +755,22 @@ namespace CydFlags.UI
 
         private Button AddButton(Panel root, string text)
         {
-            var button = new Button
-            {
-                Content = text,
-                HorizontalAlignment = HorizontalAlignment.Left,
-                Padding = new Thickness(10, 3, 10, 3),
-                Margin = new Thickness(0, 8, 0, 0)
-            };
+            Button button = NewButton(text, 0);
+            button.HorizontalAlignment = HorizontalAlignment.Left;
+            button.Margin = new Thickness(0, 8, 0, 0);
             root.Children.Add(button);
             return button;
+        }
+
+        private static Button NewButton(string text, double leftMargin)
+        {
+            return new Button
+            {
+                Content = text,
+                Padding = new Thickness(10, 3, 10, 3),
+                Margin = new Thickness(leftMargin, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
         }
     }
 }

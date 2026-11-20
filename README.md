@@ -1,11 +1,12 @@
 # CYD Flags
 
-Flags, a clock, a relative race tower and a race-logic page on a **Cheap Yellow
-Display** (ESP32-2432S028), driven directly by **SimHub**.
+Flags, a clock, a relative race tower and a race-logic page on one or more
+**Cheap Yellow Displays** (ESP32-2432S028), driven directly by **SimHub**.
 
-No Home Assistant, no MQTT broker and no PC-side Python bridge: the ESP32 runs
-an ESPHome web server, and a small SimHub plugin pushes the current state to it
-over your LAN.
+No Home Assistant, no MQTT broker and no PC-side Python bridge: each ESP32 runs
+an ESPHome web server, and a small SimHub plugin pushes the current state to
+every configured display over your LAN. One display can be offline without
+delaying the others.
 
 **German step-by-step guide:** [ANLEITUNG.md](ANLEITUNG.md)  
 **Technical reference:** [docs/cyd-flags.md](docs/cyd-flags.md)
@@ -29,10 +30,13 @@ are in the pit lane. The IP address is shown for the first 15 seconds after
 boot.
 
 The display redraws on a fixed 300 ms cadence, so rapid flag changes are
-coalesced instead of building up a laggy queue.
+coalesced instead of building up a laggy queue. Page selection, backlight and
+WiFi are configured per display; the race data itself is shared.
 
 ```
-game ──telemetry──► SimHub ──► CydFlags plugin ──HTTP POST──► ESP32 CYD
+                                    ┌──HTTP POST──► ESP32 CYD #1
+game ──telemetry──► SimHub ──► CydFlags plugin ──┼──HTTP POST──► ESP32 CYD #2
+                                    └──HTTP POST──► ESP32 CYD #3
 ```
 
 ---
@@ -48,23 +52,24 @@ game ──telemetry──► SimHub ──► CydFlags plugin ──HTTP POST�
    `SimHubWPF.exe` (usually `C:\Program Files (x86)\SimHub`), then restart
    SimHub and enable **CYD Flags** under **Plugins**.
 3. **Connect.** Enter the display's hostname (`cyd-flags.local`) or IP address
-   in the plugin settings and press **Test connection**.
+   in the plugin settings and press **Test connection**. For more displays use
+   **Add device** and give each one its own host or IP.
 4. **Drive.** The plugin sends flag, game, race mode, timing, race logic,
-   lap-label and heartbeat updates automatically.
+   lap-label and heartbeat updates to every enabled display automatically.
 
 The German guide has screenshots-free, click-by-click instructions, including
 troubleshooting: [ANLEITUNG.md](ANLEITUNG.md).
 
 From the plugin you can also:
 
-- **Choose pages** — flags only, clock only, tower, race logic, or any
-  combination. Disabled pages disappear from the touch cycle and the ESP stores
-  the choice.
-- **Open the display web UI** with one click.
-- **Store WiFi on the display** — written to the ESP's NVS with
+- **Choose pages per display** — flags only, clock only, tower, race logic, or
+  any combination. Disabled pages disappear from that display's touch cycle and
+  the ESP stores the choice.
+- **Open the selected display's web UI** with one click.
+- **Store WiFi on the selected display** — written to the ESP's NVS with
   `wifi.configure save: true`, so it survives OTA updates and reboots. A full
   factory flash still erases it.
-- **Test every flag for 10 seconds** without starting a game.
+- **Test every flag for 10 seconds on all displays** without starting a game.
 
 ---
 
@@ -108,7 +113,8 @@ firmware/cyd-flags.yaml          ESPHome firmware: display + REST API
 firmware/secrets.yaml.example    WiFi / fallback AP / OTA placeholders
 firmware/fonts/                  DejaVu Sans Condensed Bold + license
 src/CydFlags/                    SimHub plugin (C#, .NET Framework 4.8)
-  CydFlagsPlugin.cs              lifecycle, worker, HTTP push
+  CydFlagsPlugin.cs              lifecycle, per-display worker, HTTP push
+  CydFlagsSettings.cs            global + per-display settings and migration
   FlagReader.cs                  StatusDataBase flag reads
   FlagModel.cs                   flag priority + name parsing (unit-tested)
   TimingBuilder.cs               relative tower payload
@@ -198,9 +204,20 @@ POST /text/race/set?value=RACE          # or CLOCK
 POST /text/timing/set?value=...         # position~name~gap~gapcolor~lap~lapcolor;...
 POST /text/logic/set?value=...          # lap~lapcolor~delta~deltacolor~s1~...~s3color
 POST /text/lap_label/set?value=LAST     # LAST / BEST / LAST PIT / BEST PIT
+POST /text/features/set?value=flags,clock,tower,logic  # or none
 POST /number/heartbeat/set?value=123
 POST /number/brightness/set?value=90
+POST /text/wifi_ssid/set?value=MyNetwork
+POST /text/wifi_password/set?value=secret
+POST /button/wifi_connect/press
 ```
+
+The plugin computes flag, game, race mode, timing and race-logic data once, then
+POSTs the applicable parts to each enabled display. Timing is skipped for a
+display whose tower page is disabled and race logic for one without the logic
+page. Heartbeats and brightness are sent per display, so a disconnected panel
+only backs off itself. The `features` and `wifi_*` endpoints belong to firmware
+0.6.0 or newer.
 
 A heartbeat younger than 5 seconds marks the display as linked. Flags sent
 through the web UI alone disappear after 5 seconds; the SimHub plugin sends a

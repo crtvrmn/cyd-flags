@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using GameReaderCommon;
@@ -7,68 +8,57 @@ using SimHub.Plugins;
 namespace CydFlags
 {
     /// <summary>
-    /// CYD Flags: pushes the current sim racing flag to a Cheap Yellow Display
-    /// running ESPHome, using the ESPHome web server REST API. No MQTT and no
-    /// Home Assistant are required - just the display on the same LAN.
+    /// CYD Flags: pushes the current sim racing state to one or more Cheap
+    /// Yellow Display panels running ESPHome, using the ESPHome web server
+    /// REST API. No MQTT and no Home Assistant are required - just the
+    /// displays on the same LAN.
+    ///
+    /// One worker thread talks to every enabled display in turn. Shared game
+    /// state is computed once per frame; each display keeps its own page
+    /// selection, brightness and connection state, so an offline panel only
+    /// backs off that panel and never blocks the others.
     /// </summary>
-    [PluginDescription("Shows flags, a clock and relative race timing on an ESP32 'Cheap Yellow Display' (ESPHome firmware over HTTP)")]
+    [PluginDescription("Shows flags, a clock and relative race timing on one or more ESP32 'Cheap Yellow Display' panels (ESPHome firmware over HTTP)")]
     [PluginAuthor("crt")]
     [PluginName("CYD Flags")]
     public class CydFlagsPlugin : IPlugin, IDataPlugin, IWPFSettingsV2
     {
-        public const string Version = "0.6.0";
+        public const string Version = "0.7.0";
 
         public CydFlagsSettings Settings;
 
         private readonly object _stateLock = new object();
 
+        // Shared state, computed once by DataUpdate and read by every device.
         private FlagKind _flag = FlagKind.None;
         private string _game = string.Empty;
         private bool _raceMode;
         private bool _gameRunning;
-        private string _timing = string.Empty;
+        private string _timingLast = string.Empty;
+        private string _timingBest = string.Empty;
         private string _logic = string.Empty;
-        private string _lapLabel = "LAST";
-        private bool _reachable;
-        private string _lastError = string.Empty;
-        private string _lastUrl = string.Empty;
-        private DateTime _lastOkUtc;
+        private string _lapLabelLast = "LAST";
+        private string _lapLabelBest = "BEST";
 
-        private DeviceClient _client;
+        // Selected-display status mirror, used only for log transitions. The
+        // public properties read the selected DeviceClient directly.
+        private bool _reachable;
+        private bool _wasGloballyEnabled = true;
+
+        private readonly object _deviceLock = new object();
+        private List<DeviceState> _deviceStates = new List<DeviceState>();
+        private int _selectedDeviceIndex;
 
         private Thread _worker;
         private AutoResetEvent _wake;
         private volatile bool _stopping;
-
-        // Worker-thread only state.
-        private string _lastSentFlag;
-        private string _lastSentGame;
-        private string _lastSentRaceMode;
-        private string _lastSentTiming;
-        private string _lastSentLogic;
-        private string _lastSentLapLabel;
-        private string _lastSentFeatures;
-        private string _lastHostKey;
-        private DateTime _lastFlagSentUtc;
-        private DateTime _lastGameSentUtc;
-        private DateTime _lastHeartbeatUtc;
-        private DateTime _lastRaceModeSentUtc;
-        private DateTime _lastTimingSentUtc;
-        private DateTime _lastLogicSentUtc;
-        private DateTime _lastLapLabelSentUtc;
-        private DateTime _lastFeaturesSentUtc;
-        private DateTime _backoffUntilUtc;
-        private int _heartbeatCounter;
-        private bool _brightnessDirty;
-        private int _lastSentBrightness = -1;
-        private bool _lastGameRunning;
 
         private static readonly DateTime NoTiming = DateTime.MinValue;
         private DateTime _lastTimingBuildUtc = NoTiming;
         private DateTime _lastLogicBuildUtc = NoTiming;
 
         // "Test flags" override: while set, DataUpdate ignores the game and
-        // reports this flag so the user can check the panel without driving.
+        // reports this flag so the user can check the panels without driving.
         private FlagKind _testFlag = FlagKind.None;
         private DateTime _testUntilUtc = DateTime.MinValue;
 
@@ -86,18 +76,113 @@ namespace CydFlags
         public string LeftMenuTitle { get { return "CYD Flags"; } }
 
         // ------------------------------------------------------------------
-        // Read-only state for the settings UI and SimHub properties.
+        // Read-only state for the settings UI and SimHub properties. Device
+        // status follows the selected display; game values are shared.
         // ------------------------------------------------------------------
-        public bool Linked { get { lock (_stateLock) return _reachable; } }
-        public string LastError { get { lock (_stateLock) return _lastError; } }
-        public string DeviceUrl { get { lock (_stateLock) return _lastUrl; } }
-        public DateTime LastReplyUtc { get { lock (_stateLock) return _lastOkUtc; } }
+        public bool Linked
+        {
+            get
+            {
+                DeviceState state = SelectedState();
+                return state != null && state.Client.Reachable;
+            }
+        }
+
+        public string LastError
+        {
+            get
+            {
+                DeviceState state = SelectedState();
+                return state != null ? state.Client.LastError : "no display configured";
+            }
+        }
+
+        public string DeviceUrl
+        {
+            get
+            {
+                DeviceState state = SelectedState();
+                if (state != null && !string.IsNullOrEmpty(state.Client.LastUrl))
+                    return state.Client.LastUrl;
+                return DescribeTarget();
+            }
+        }
+
+        public DateTime LastReplyUtc
+        {
+            get
+            {
+                DeviceState state = SelectedState();
+                return state != null ? state.Client.LastOkUtc : default(DateTime);
+            }
+        }
+
+        public int RequestsSent
+        {
+            get
+            {
+                DeviceState state = SelectedState();
+                return state != null ? state.Client.Requests : 0;
+            }
+        }
+
         public FlagKind CurrentFlag { get { lock (_stateLock) return _flag; } }
         public string CurrentGame { get { lock (_stateLock) return _game; } }
         public bool RaceMode { get { lock (_stateLock) return _raceMode; } }
-        public string CurrentTiming { get { lock (_stateLock) return _timing; } }
         public string CurrentLogic { get { lock (_stateLock) return _logic; } }
-        public int RequestsSent { get { return _client != null ? _client.Requests : 0; } }
+
+        /// <summary>Timing payload for the selected display (LAST or BEST lap).</summary>
+        public string CurrentTiming
+        {
+            get
+            {
+                bool best = SelectedDeviceUsesBestLap();
+                lock (_stateLock) return best ? _timingBest : _timingLast;
+            }
+        }
+
+        public int DeviceCount
+        {
+            get
+            {
+                lock (_deviceLock)
+                {
+                    CydFlagsSettings settings = Settings;
+                    return settings != null && settings.Devices != null ? settings.Devices.Count : 0;
+                }
+            }
+        }
+
+        /// <summary>Index of the display whose settings the UI is editing.
+        /// Clamped to the available devices.</summary>
+        public int SelectedDeviceIndex
+        {
+            get
+            {
+                lock (_deviceLock)
+                    return ClampSelectionLocked(_selectedDeviceIndex, DeviceCountLocked());
+            }
+            set
+            {
+                lock (_deviceLock)
+                    _selectedDeviceIndex = ClampSelectionLocked(value, DeviceCountLocked());
+            }
+        }
+
+        public CydFlagsDeviceSettings SelectedDevice
+        {
+            get
+            {
+                lock (_deviceLock)
+                {
+                    CydFlagsSettings settings = Settings;
+                    if (settings == null || settings.Devices == null || settings.Devices.Count == 0)
+                        return null;
+                    int index = ClampSelectionLocked(_selectedDeviceIndex, settings.Devices.Count);
+                    return settings.Devices[index];
+                }
+            }
+        }
 
         public void Init(PluginManager pluginManager)
         {
@@ -108,8 +193,8 @@ namespace CydFlags
                 Settings = this.ReadCommonSettings<CydFlagsSettings>("CydFlagsSettings", () => new CydFlagsSettings());
                 if (Settings == null) Settings = new CydFlagsSettings();
                 Settings.Clamp();
+                SyncDeviceStates();
 
-                _client = new DeviceClient(() => Settings);
                 _wake = new AutoResetEvent(false);
                 _stopping = false;
                 _worker = new Thread(WorkerLoop);
@@ -126,7 +211,7 @@ namespace CydFlags
                 this.AttachDelegate("CydFlagsError", () => LastError);
                 this.AddAction("CydFlagsTest", (a, b) => TestConnection());
 
-                SimHub.Logging.Current.Info("CYD Flags: device target " + DescribeTarget());
+                SimHub.Logging.Current.Info("CYD Flags: device targets " + DescribeTargets());
             }
             catch (Exception ex)
             {
@@ -143,7 +228,8 @@ namespace CydFlags
                 if (!Settings.Enabled)
                 {
                     SetGameRunning(false);
-                    SetState(FlagKind.None, string.Empty, false, string.Empty, string.Empty, "LAST");
+                    SetState(FlagKind.None, string.Empty, false,
+                        string.Empty, string.Empty, string.Empty, "LAST", "BEST");
                     return;
                 }
 
@@ -157,9 +243,10 @@ namespace CydFlags
                 if (testActive)
                 {
                     // Treat a test as "game running" so the idle dim does not
-                    // black out the panel while the user is checking flags.
+                    // black out the panels while the user is checking flags.
                     SetGameRunning(true);
-                    SetState(testFlag, string.Empty, false, string.Empty, string.Empty, "LAST");
+                    SetState(testFlag, string.Empty, false,
+                        string.Empty, string.Empty, string.Empty, "LAST", "BEST");
                     _lastTimingBuildUtc = NoTiming;
                     _lastLogicBuildUtc = NoTiming;
                     TimingBuilder.ResetTrend();
@@ -169,7 +256,8 @@ namespace CydFlags
                 if (!data.GameRunning || data.NewData == null)
                 {
                     SetGameRunning(false);
-                    SetState(FlagKind.None, string.Empty, false, string.Empty, string.Empty, "LAST");
+                    SetState(FlagKind.None, string.Empty, false,
+                        string.Empty, string.Empty, string.Empty, "LAST", "BEST");
                     _lastTimingBuildUtc = NoTiming;
                     _lastLogicBuildUtc = NoTiming;
                     TimingBuilder.ResetTrend();
@@ -178,26 +266,47 @@ namespace CydFlags
 
                 SetGameRunning(true);
 
-                FlagKind kind = Settings.PageFlags ? FlagReader.ReadKind(data.NewData) : FlagKind.None;
+                // The game state is shared; each display only decides which
+                // parts of it it wants to receive.
+                CydFlagsDeviceSettings[] devices = DeviceSnapshot();
+                bool anyFlags = false;
+                bool anyTower = false;
+                bool anyLogic = false;
+                foreach (CydFlagsDeviceSettings device in devices)
+                {
+                    if (device == null || !device.Enabled) continue;
+                    if (device.PageFlags) anyFlags = true;
+                    if (device.PageTower) anyTower = true;
+                    if (device.PageLogic) anyLogic = true;
+                }
+
+                FlagKind kind = anyFlags ? FlagReader.ReadKind(data.NewData) : FlagKind.None;
                 string game = data.GameName ?? string.Empty;
 
-                bool race = (Settings.PageTower || Settings.PageLogic)
-                            && TimingBuilder.IsRaceSession(data.NewData);
-                string timing = string.Empty;
-                string logic = string.Empty;
+                bool race = (anyTower || anyLogic) && TimingBuilder.IsRaceSession(data.NewData);
+                string timingLast = string.Empty;
+                string timingBest = string.Empty;
+                string logicPayload = string.Empty;
                 if (race)
                 {
                     DateTime now = DateTime.UtcNow;
-                    if (Settings.PageTower)
+                    if (anyTower)
                     {
                         if ((now - _lastTimingBuildUtc).TotalMilliseconds >= 400)
                         {
-                            timing = TimingBuilder.Build(data.NewData, Settings.ShowBestLap);
+                            // Build both variants so each display can show its
+                            // own LAST/BEST choice from the shared snapshot.
+                            // BuildBoth updates the shared gap trend only once.
+                            TimingBuilder.BuildBoth(data.NewData, out timingLast, out timingBest);
                             _lastTimingBuildUtc = now;
                         }
                         else
                         {
-                            lock (_stateLock) timing = _timing;
+                            lock (_stateLock)
+                            {
+                                timingLast = _timingLast;
+                                timingBest = _timingBest;
+                            }
                         }
                     }
                     else
@@ -205,16 +314,16 @@ namespace CydFlags
                         _lastTimingBuildUtc = NoTiming;
                     }
 
-                    if (Settings.PageLogic)
+                    if (anyLogic)
                     {
                         if ((now - _lastLogicBuildUtc).TotalMilliseconds >= 400)
                         {
-                            logic = RaceLogicBuilder.Build(data.NewData);
+                            logicPayload = RaceLogicBuilder.Build(data.NewData);
                             _lastLogicBuildUtc = now;
                         }
                         else
                         {
-                            lock (_stateLock) logic = _logic;
+                            lock (_stateLock) logicPayload = _logic;
                         }
                     }
                     else
@@ -230,8 +339,9 @@ namespace CydFlags
                 }
 
                 bool pit = Convert.ToBoolean(data.NewData.IsInPitLane);
-                string lapLabel = (Settings.ShowBestLap ? "BEST" : "LAST") + (pit ? " PIT" : "");
-                SetState(kind, game, race, timing, logic, lapLabel);
+                string suffix = pit ? " PIT" : "";
+                SetState(kind, game, race, timingLast, timingBest, logicPayload,
+                    "LAST" + suffix, "BEST" + suffix);
             }
             catch (Exception ex)
             {
@@ -282,7 +392,16 @@ namespace CydFlags
         {
             if (Settings == null) return;
             Settings.Clamp();
-            if (Settings.ApplyBrightness || Settings.DimWhenNoGame) _brightnessDirty = true;
+            SyncDeviceStates();
+
+            DeviceState[] states;
+            lock (_deviceLock) states = _deviceStates.ToArray();
+            foreach (DeviceState state in states)
+            {
+                if (state.Settings.ApplyBrightness || state.Settings.DimWhenNoGame)
+                    state.BrightnessDirty = true;
+            }
+
             if (_wake != null) _wake.Set();
 
             try
@@ -295,32 +414,71 @@ namespace CydFlags
             }
         }
 
-        /// <summary>Force a fresh flag/game/heartbeat push, used by the Test button.</summary>
+        /// <summary>Add a display and select it. The UI calls ApplySettings first.</summary>
+        public CydFlagsDeviceSettings AddDevice()
+        {
+            CydFlagsDeviceSettings device;
+            lock (_deviceLock)
+            {
+                CydFlagsSettings settings = Settings;
+                if (settings == null) return null;
+                device = settings.AddDevice();
+                _selectedDeviceIndex = settings.Devices.Count - 1;
+            }
+
+            ApplySettings();
+            return device;
+        }
+
+        /// <summary>Remove the selected display. The last display cannot be removed.</summary>
+        public bool RemoveSelectedDevice()
+        {
+            bool removed = false;
+            lock (_deviceLock)
+            {
+                CydFlagsSettings settings = Settings;
+                if (settings != null && settings.Devices != null && settings.Devices.Count > 1)
+                {
+                    int index = ClampSelectionLocked(_selectedDeviceIndex, settings.Devices.Count);
+                    settings.Devices.RemoveAt(index);
+                    _selectedDeviceIndex = ClampSelectionLocked(index, settings.Devices.Count);
+                    removed = true;
+                }
+            }
+
+            if (removed) ApplySettings();
+            return removed;
+        }
+
+        /// <summary>Force a fresh flag/game/heartbeat push on every display,
+        /// used by the Test button.</summary>
         public void TestConnection()
         {
-            _lastSentFlag = null;
-            _lastSentGame = null;
-            _lastSentRaceMode = null;
-            _lastSentTiming = null;
-            _lastSentLogic = null;
-            _lastSentFeatures = null;
-            _lastSentBrightness = -1;
-            _lastHeartbeatUtc = DateTime.MinValue;
-            _backoffUntilUtc = DateTime.MinValue;
-            if (_client != null) _client.ResetStatus();
+            DeviceState[] states;
+            lock (_deviceLock) states = _deviceStates.ToArray();
+            foreach (DeviceState state in states)
+            {
+                ResetSendState(state);
+                state.BrightnessDirty = true;
+            }
             if (_wake != null) _wake.Set();
         }
 
-        /// <summary>Push the brightness slider value to the display now.</summary>
+        /// <summary>Push the brightness slider value of the selected display now.</summary>
         public void ApplyBrightnessNow()
         {
-            _brightnessDirty = true;
-            _backoffUntilUtc = DateTime.MinValue;
+            DeviceState state = SelectedState();
+            if (state != null)
+            {
+                state.BrightnessDirty = true;
+                state.BackoffUntilUtc = DateTime.MinValue;
+            }
             if (_wake != null) _wake.Set();
         }
 
-        /// <summary>Start showing a test flag for a few seconds, ignoring the
-        /// game. Used by the settings panel to verify the display.</summary>
+        /// <summary>Start showing a test flag for a few seconds on all enabled
+        /// displays, ignoring the game. Used by the settings panel to verify
+        /// the panels.</summary>
         public void ShowTestFlag(FlagKind kind, int seconds)
         {
             if (seconds < 1) seconds = 1;
@@ -339,32 +497,54 @@ namespace CydFlags
             if (_wake != null) _wake.Set();
         }
 
-        /// <summary>Write WiFi credentials into the ESP's NVS and connect.
+        /// <summary>Write WiFi credentials into one ESP's NVS and connect.
         /// Returns an empty string on success, otherwise a user-facing error.
-        /// A full USB/factory flash erases NVS again; OTA and reboots keep it.</summary>
-        public string SaveWifiToDisplay(string ssid, string password)
+        /// A full USB/factory flash erases NVS again; OTA and reboots keep it.
+        /// The password is only sent to the display, never saved in settings.</summary>
+        public string SaveWifiToDisplay(CydFlagsDeviceSettings device, string ssid, string password)
         {
-            if (_client == null) return "Plugin is not initialised yet.";
+            if (device == null) return "No display selected.";
+
+            DeviceState state = FindState(device);
+            if (state == null)
+            {
+                // A display may have just been added and not reached the
+                // worker yet; refresh the runtime states once.
+                SyncDeviceStates();
+                state = FindState(device);
+            }
+            if (state == null) return "Plugin is not initialised yet.";
             if (string.IsNullOrWhiteSpace(ssid)) return "SSID must not be empty.";
 
             string cleanSsid = ssid.Trim();
-            if (!_client.SendWifiSsid(cleanSsid))
-                return "SSID: " + (_client.LastError ?? "request failed");
-            if (!_client.SendWifiPassword(password ?? string.Empty))
-                return "Password: " + (_client.LastError ?? "request failed");
-            if (!_client.SendWifiConnect())
-                return "Connect: " + (_client.LastError ?? "request failed");
+            if (!state.Client.SendWifiSsid(cleanSsid))
+                return "SSID: " + (state.Client.LastError ?? "request failed");
+            if (!state.Client.SendWifiPassword(password ?? string.Empty))
+                return "Password: " + (state.Client.LastError ?? "request failed");
+            if (!state.Client.SendWifiConnect())
+                return "Connect: " + (state.Client.LastError ?? "request failed");
 
-            Settings.WifiSsid = cleanSsid;
+            device.WifiSsid = cleanSsid;
             ApplySettings();
             SyncStatus(DateTime.UtcNow);
             return string.Empty;
         }
 
+        /// <summary>Backwards-compatible helper: save WiFi for the selected display.</summary>
+        public string SaveWifiToDisplay(string ssid, string password)
+        {
+            return SaveWifiToDisplay(SelectedDevice, ssid, password);
+        }
+
         public string DescribeTarget()
         {
-            if (Settings == null) return "-";
-            return "http://" + Settings.Host + ":" + Settings.Port;
+            return DescribeTarget(SelectedDevice);
+        }
+
+        public string DescribeTarget(CydFlagsDeviceSettings device)
+        {
+            if (device == null) return "-";
+            return "http://" + device.Host + ":" + device.Port;
         }
 
         public string DeviceWebUrl
@@ -396,220 +576,254 @@ namespace CydFlags
         private void Pump()
         {
             CydFlagsSettings settings = Settings;
-            if (settings == null || !settings.Enabled) return;
+            if (settings == null) return;
 
             DateTime now = DateTime.UtcNow;
 
-            string hostKey = (settings.Host ?? string.Empty) + "|" + settings.Port;
-            if (hostKey != _lastHostKey)
+            DeviceState[] states;
+            lock (_deviceLock) states = _deviceStates.ToArray();
+
+            if (!settings.Enabled)
             {
-                _lastHostKey = hostKey;
-                _lastSentFlag = null;
-                _lastSentGame = null;
-                _lastSentRaceMode = null;
-                _lastSentTiming = null;
-                _lastSentLogic = null;
-                _lastSentLapLabel = null;
-                _lastSentFeatures = null;
-                _lastSentBrightness = -1;
-                _lastHeartbeatUtc = DateTime.MinValue;
-                _lastRaceModeSentUtc = DateTime.MinValue;
-                _lastTimingSentUtc = DateTime.MinValue;
-                _lastLogicSentUtc = DateTime.MinValue;
-                _lastLapLabelSentUtc = DateTime.MinValue;
-                _lastFeaturesSentUtc = DateTime.MinValue;
-                _backoffUntilUtc = DateTime.MinValue;
-                if (_client != null) _client.ResetStatus();
-                _brightnessDirty = settings.ApplyBrightness || settings.DimWhenNoGame;
+                // Forget what was sent while the plugin was switched off, so
+                // re-enabling pushes a complete state instead of resuming a
+                // stale cache (the panels have shown NO LINK in the meantime).
+                if (_wasGloballyEnabled)
+                {
+                    _wasGloballyEnabled = false;
+                    foreach (DeviceState state in states)
+                    {
+                        if (state == null) continue;
+                        ResetSendState(state);
+                        state.WasEnabled = state.Settings != null && state.Settings.Enabled;
+                        state.BrightnessDirty = state.Settings != null
+                            && (state.Settings.ApplyBrightness || state.Settings.DimWhenNoGame);
+                    }
+                }
+                return;
+            }
+            _wasGloballyEnabled = true;
+
+            if (states.Length == 0) return;
+
+            // Snapshot the shared frame once. Every device uses the same flag,
+            // game, race mode and timing; only page gates and presentation
+            // values differ.
+            SharedState shared = ReadSharedState();
+
+            foreach (DeviceState state in states)
+            {
+                if (state == null || state.Settings == null) continue;
+
+                if (!state.Settings.Enabled)
+                {
+                    state.WasEnabled = false;
+                    continue;
+                }
+
+                if (!state.WasEnabled)
+                {
+                    // A display that was just enabled gets a fresh start.
+                    state.WasEnabled = true;
+                    ResetSendState(state);
+                    state.BrightnessDirty =
+                        state.Settings.ApplyBrightness || state.Settings.DimWhenNoGame;
+                }
+
+                try
+                {
+                    PumpDevice(settings, state, shared, now);
+                }
+                catch (Exception ex)
+                {
+                    // One broken display must not stop the others.
+                    state.BackoffUntilUtc = now.AddMilliseconds(750);
+                    LogErrorThrottled("[" + state.Settings.Name + "] " + ex.Message, now);
+                }
             }
 
-            if (now < _backoffUntilUtc) return;
+            SyncStatus(now);
+        }
 
-            FlagKind flag;
-            string game;
-            bool race;
-            bool gameRunning;
-            string timing;
-            string logic;
-            string lapLabel;
-            lock (_stateLock)
+        private void PumpDevice(CydFlagsSettings settings, DeviceState state, SharedState shared, DateTime now)
+        {
+            CydFlagsDeviceSettings device = state.Settings;
+
+            string hostKey = BuildHostKey(device);
+            if (hostKey != state.HostKey)
             {
-                flag = _flag;
-                game = _game;
-                race = _raceMode;
-                gameRunning = _gameRunning;
-                timing = _timing;
-                logic = _logic;
-                lapLabel = _lapLabel;
+                state.HostKey = hostKey;
+                ResetSendState(state);
+                state.BrightnessDirty = device.ApplyBrightness || device.DimWhenNoGame;
             }
+
+            if (now < state.BackoffUntilUtc) return;
 
             // Make sure a game start always re-sends the slider brightness,
             // even if the previous target happened to be the same value. This
             // is what restores the panel after the idle 0% dim.
-            if (gameRunning != _lastGameRunning)
+            if (shared.GameRunning != state.LastGameRunning)
             {
-                _lastGameRunning = gameRunning;
-                _brightnessDirty = true;
+                state.LastGameRunning = shared.GameRunning;
+                state.BrightnessDirty = true;
             }
 
-            string option = FlagModel.ToOption(flag);
-            string safeGame = SanitizeGame(game);
+            string option = FlagModel.ToOption(shared.Flag);
+            string safeGame = SanitizeGame(shared.Game);
 
             // Page feature list. Sent first so a freshly booted display hides
             // pages before the first flag/game payload arrives.
-            string features = settings.FeatureString();
-            bool featuresDue = features != _lastSentFeatures
-                || (now - _lastFeaturesSentUtc).TotalSeconds >= 10;
+            string features = device.FeatureString();
+            bool featuresDue = features != state.LastSentFeatures
+                || (now - state.LastFeaturesSentUtc).TotalSeconds >= 10;
             if (featuresDue)
             {
-                if (!_client.SendFeatures(features)) { Fail(now); return; }
-                _lastSentFeatures = features;
-                _lastFeaturesSentUtc = now;
-                LogRequest("features " + features);
+                if (!state.Client.SendFeatures(features)) { Fail(state, now); return; }
+                state.LastSentFeatures = features;
+                state.LastFeaturesSentUtc = now;
+                LogRequest(state, "features " + features);
             }
 
-            if (option != _lastSentFlag
-                && (now - _lastFlagSentUtc).TotalMilliseconds >= settings.MinSendIntervalMs)
+            if (option != state.LastSentFlag
+                && (now - state.LastFlagSentUtc).TotalMilliseconds >= settings.MinSendIntervalMs)
             {
-                if (!_client.SendFlag(flag)) { Fail(now); return; }
-                _lastSentFlag = option;
-                _lastFlagSentUtc = now;
-                LogRequest("flag " + option);
+                if (!state.Client.SendFlag(shared.Flag)) { Fail(state, now); return; }
+                state.LastSentFlag = option;
+                state.LastFlagSentUtc = now;
+                LogRequest(state, "flag " + option);
             }
 
-            if (safeGame != _lastSentGame
-                && (now - _lastGameSentUtc).TotalMilliseconds >= settings.MinSendIntervalMs)
+            if (safeGame != state.LastSentGame
+                && (now - state.LastGameSentUtc).TotalMilliseconds >= settings.MinSendIntervalMs)
             {
-                if (!_client.SendGame(safeGame)) { Fail(now); return; }
-                _lastSentGame = safeGame;
-                _lastGameSentUtc = now;
-                LogRequest("game '" + safeGame + "'");
+                if (!state.Client.SendGame(safeGame)) { Fail(state, now); return; }
+                state.LastSentGame = safeGame;
+                state.LastGameSentUtc = now;
+                LogRequest(state, "game '" + safeGame + "'");
             }
 
-            string mode = race ? "RACE" : "CLOCK";
-            bool modeDue = mode != _lastSentRaceMode
-                || (race && (now - _lastRaceModeSentUtc).TotalSeconds >= 10);
+            string mode = shared.Race ? "RACE" : "CLOCK";
+            bool modeDue = mode != state.LastSentRaceMode
+                || (shared.Race && (now - state.LastRaceModeSentUtc).TotalSeconds >= 10);
             if (modeDue)
             {
-                if (!_client.SendRaceMode(race)) { Fail(now); return; }
-                _lastSentRaceMode = mode;
-                _lastRaceModeSentUtc = now;
-                _lastSentTiming = null;
-                _lastSentLogic = null;
-                LogRequest("mode " + mode);
+                if (!state.Client.SendRaceMode(shared.Race)) { Fail(state, now); return; }
+                state.LastSentRaceMode = mode;
+                state.LastRaceModeSentUtc = now;
+                state.LastSentTiming = null;
+                state.LastSentLogic = null;
+                LogRequest(state, "mode " + mode);
             }
 
-            bool labelDue = lapLabel != _lastSentLapLabel
-                || (race && (now - _lastLapLabelSentUtc).TotalSeconds >= 10);
+            string lapLabel = device.ShowBestLap ? shared.LapLabelBest : shared.LapLabelLast;
+            bool labelDue = lapLabel != state.LastSentLapLabel
+                || (shared.Race && (now - state.LastLapLabelSentUtc).TotalSeconds >= 10);
             if (labelDue)
             {
-                if (!_client.SendLapLabel(lapLabel)) { Fail(now); return; }
-                _lastSentLapLabel = lapLabel;
-                _lastLapLabelSentUtc = now;
-                LogRequest("lap label " + lapLabel);
+                if (!state.Client.SendLapLabel(lapLabel)) { Fail(state, now); return; }
+                state.LastSentLapLabel = lapLabel;
+                state.LastLapLabelSentUtc = now;
+                LogRequest(state, "lap label " + lapLabel);
             }
 
-            if (race && settings.PageTower)
+            if (shared.Race && device.PageTower)
             {
-                bool timingDue = timing != _lastSentTiming
-                    || (now - _lastTimingSentUtc).TotalSeconds >= 5;
+                string timing = device.ShowBestLap ? shared.TimingBest : shared.TimingLast;
+                bool timingDue = timing != state.LastSentTiming
+                    || (now - state.LastTimingSentUtc).TotalSeconds >= 5;
                 if (!string.IsNullOrEmpty(timing) && timingDue)
                 {
-                    if (!_client.SendTiming(timing)) { Fail(now); return; }
-                    _lastSentTiming = timing;
-                    _lastTimingSentUtc = now;
-                    LogRequest("timing (" + timing.Length + " chars)");
+                    if (!state.Client.SendTiming(timing)) { Fail(state, now); return; }
+                    state.LastSentTiming = timing;
+                    state.LastTimingSentUtc = now;
+                    LogRequest(state, "timing (" + timing.Length + " chars)");
                 }
             }
-            else if (_lastSentTiming != null)
+            else if (state.LastSentTiming != null)
             {
                 // Clear the tower payload when leaving the race or when the
                 // tower page is disabled, so no stale rows can appear later.
-                if (!_client.SendTiming(string.Empty)) { Fail(now); return; }
-                _lastSentTiming = null;
-                LogRequest("timing cleared");
+                if (!state.Client.SendTiming(string.Empty)) { Fail(state, now); return; }
+                state.LastSentTiming = null;
+                LogRequest(state, "timing cleared");
             }
 
-            if (race && settings.PageLogic)
+            if (shared.Race && device.PageLogic)
             {
-                bool logicDue = logic != _lastSentLogic
-                    || (now - _lastLogicSentUtc).TotalSeconds >= 5;
-                if (!string.IsNullOrEmpty(logic) && logicDue)
+                bool logicDue = shared.Logic != state.LastSentLogic
+                    || (now - state.LastLogicSentUtc).TotalSeconds >= 5;
+                if (!string.IsNullOrEmpty(shared.Logic) && logicDue)
                 {
-                    if (!_client.SendLogic(logic)) { Fail(now); return; }
-                    _lastSentLogic = logic;
-                    _lastLogicSentUtc = now;
-                    LogRequest("logic (" + logic.Length + " chars)");
+                    if (!state.Client.SendLogic(shared.Logic)) { Fail(state, now); return; }
+                    state.LastSentLogic = shared.Logic;
+                    state.LastLogicSentUtc = now;
+                    LogRequest(state, "logic (" + shared.Logic.Length + " chars)");
                 }
             }
-            else if (_lastSentLogic != null)
+            else if (state.LastSentLogic != null)
             {
-                if (!_client.SendLogic(string.Empty)) { Fail(now); return; }
-                _lastSentLogic = null;
-                LogRequest("logic cleared");
+                if (!state.Client.SendLogic(string.Empty)) { Fail(state, now); return; }
+                state.LastSentLogic = null;
+                LogRequest(state, "logic cleared");
             }
 
             // When "dim without game" is enabled, the backlight target is 0
             // until SimHub reports a running game; the slider value is then
             // restored on game start.
-            int brightnessTarget = (settings.DimWhenNoGame && !gameRunning) ? 0 : settings.Brightness;
-            bool brightnessDue = _brightnessDirty
-                || (settings.DimWhenNoGame && brightnessTarget != _lastSentBrightness);
+            int brightnessTarget = (device.DimWhenNoGame && !shared.GameRunning) ? 0 : device.Brightness;
+            bool brightnessDue = state.BrightnessDirty
+                || (device.DimWhenNoGame && brightnessTarget != state.LastSentBrightness);
             if (brightnessDue)
             {
-                if (!_client.SendBrightness(brightnessTarget)) { Fail(now); return; }
-                _brightnessDirty = false;
-                _lastSentBrightness = brightnessTarget;
-                LogRequest("brightness " + brightnessTarget);
+                if (!state.Client.SendBrightness(brightnessTarget)) { Fail(state, now); return; }
+                state.BrightnessDirty = false;
+                state.LastSentBrightness = brightnessTarget;
+                LogRequest(state, "brightness " + brightnessTarget);
             }
 
-            if ((now - _lastHeartbeatUtc).TotalMilliseconds >= settings.HeartbeatMs)
+            if ((now - state.LastHeartbeatUtc).TotalMilliseconds >= settings.HeartbeatMs)
             {
-                _heartbeatCounter++;
+                state.HeartbeatCounter++;
                 // ESPHome numbers are floats internally; wrap before 2^24 so
                 // every heartbeat still changes the displayed value and the
                 // on_value trigger keeps firing.
-                if (_heartbeatCounter > 1000000) _heartbeatCounter = 0;
-                if (!_client.SendHeartbeat(_heartbeatCounter)) { Fail(now); return; }
-                _lastHeartbeatUtc = now;
-                LogRequest("heartbeat " + _heartbeatCounter);
+                if (state.HeartbeatCounter > 1000000) state.HeartbeatCounter = 0;
+                if (!state.Client.SendHeartbeat(state.HeartbeatCounter)) { Fail(state, now); return; }
+                state.LastHeartbeatUtc = now;
+                LogRequest(state, "heartbeat " + state.HeartbeatCounter);
             }
-
-            SyncStatus(now);
         }
 
-        private void Fail(DateTime now)
+        private void Fail(DeviceState state, DateTime now)
         {
-            // Back off briefly so an unreachable display does not turn the
-            // worker into a tight retry loop.
-            _backoffUntilUtc = now.AddMilliseconds(750);
-            SyncStatus(now);
+            // Back off only this display so an unreachable panel does not turn
+            // the worker into a tight retry loop and does not delay the others.
+            state.BackoffUntilUtc = now.AddMilliseconds(750);
         }
 
         private void SyncStatus(DateTime now)
         {
-            bool wasReachable = _reachable;
-            string error = _client != null ? _client.LastError : "no client";
-            string url = _client != null ? _client.LastUrl : string.Empty;
-            DateTime lastOk = _client != null ? _client.LastOkUtc : default(DateTime);
+            DeviceState state = SelectedState();
+            bool reachable = state != null && state.Client.Reachable;
+            string error = state != null ? (state.Client.LastError ?? string.Empty) : "no display configured";
+            string url = state != null ? (state.Client.LastUrl ?? string.Empty) : string.Empty;
 
+            bool wasReachable;
             lock (_stateLock)
             {
-                _reachable = _client != null && _client.Reachable;
-                _lastError = error ?? string.Empty;
-                _lastUrl = url ?? string.Empty;
-                _lastOkUtc = lastOk;
+                wasReachable = _reachable;
+                _reachable = reachable;
             }
 
-            if (wasReachable != _reachable)
+            if (wasReachable != reachable)
             {
-                if (_reachable)
-                    SimHub.Logging.Current.Info("CYD Flags: display connected at " + _lastUrl);
+                if (reachable)
+                    SimHub.Logging.Current.Info("CYD Flags: display connected at " + url);
                 else
-                    SimHub.Logging.Current.Warn("CYD Flags: display not responding: " + _lastError);
+                    SimHub.Logging.Current.Warn("CYD Flags: display not responding: " + error);
             }
 
-            if (!_reachable) LogErrorThrottled(_lastError, now);
+            if (!reachable && !string.IsNullOrEmpty(error)) LogErrorThrottled(error, now);
         }
 
         private void LogErrorThrottled(string message, DateTime now)
@@ -628,10 +842,10 @@ namespace CydFlags
             LogErrorThrottled(message, DateTime.UtcNow);
         }
 
-        private void LogRequest(string what)
+        private void LogRequest(DeviceState state, string what)
         {
             if (Settings != null && Settings.LogRequests)
-                SimHub.Logging.Current.Info("CYD Flags: sent " + what);
+                SimHub.Logging.Current.Info("CYD Flags [" + state.Settings.Name + "]: sent " + what);
         }
 
         private void SetGameRunning(bool running)
@@ -639,17 +853,229 @@ namespace CydFlags
             lock (_stateLock) _gameRunning = running;
         }
 
-        private void SetState(FlagKind flag, string game, bool race, string timing, string logic, string lapLabel)
+        private void SetState(FlagKind flag, string game, bool race,
+            string timingLast, string timingBest, string logic,
+            string lapLabelLast, string lapLabelBest)
         {
             lock (_stateLock)
             {
                 _flag = flag;
                 _game = game ?? string.Empty;
                 _raceMode = race;
-                _timing = timing ?? string.Empty;
+                _timingLast = timingLast ?? string.Empty;
+                _timingBest = timingBest ?? string.Empty;
                 _logic = logic ?? string.Empty;
-                _lapLabel = lapLabel ?? "LAST";
+                _lapLabelLast = lapLabelLast ?? "LAST";
+                _lapLabelBest = lapLabelBest ?? "BEST";
             }
+        }
+
+        private SharedState ReadSharedState()
+        {
+            var state = new SharedState();
+            lock (_stateLock)
+            {
+                state.Flag = _flag;
+                state.Game = _game;
+                state.Race = _raceMode;
+                state.GameRunning = _gameRunning;
+                state.TimingLast = _timingLast;
+                state.TimingBest = _timingBest;
+                state.Logic = _logic;
+                state.LapLabelLast = _lapLabelLast;
+                state.LapLabelBest = _lapLabelBest;
+            }
+            return state;
+        }
+
+        // ------------------------------------------------------------------
+        // Per-device runtime state
+        // ------------------------------------------------------------------
+        private sealed class DeviceState
+        {
+            public readonly CydFlagsDeviceSettings Settings;
+            public readonly DeviceClient Client;
+
+            public string LastSentFlag;
+            public string LastSentGame;
+            public string LastSentRaceMode;
+            public string LastSentTiming;
+            public string LastSentLogic;
+            public string LastSentLapLabel;
+            public string LastSentFeatures;
+
+            public string HostKey;
+            public bool WasEnabled;
+
+            public DateTime LastFlagSentUtc;
+            public DateTime LastGameSentUtc;
+            public DateTime LastHeartbeatUtc;
+            public DateTime LastRaceModeSentUtc;
+            public DateTime LastTimingSentUtc;
+            public DateTime LastLogicSentUtc;
+            public DateTime LastLapLabelSentUtc;
+            public DateTime LastFeaturesSentUtc;
+
+            public DateTime BackoffUntilUtc;
+            public int HeartbeatCounter;
+            public bool BrightnessDirty;
+            public int LastSentBrightness = -1;
+            public bool LastGameRunning;
+
+            public DeviceState(CydFlagsDeviceSettings settings)
+            {
+                Settings = settings;
+                Client = new DeviceClient(() => Settings);
+                WasEnabled = settings.Enabled;
+                HostKey = BuildHostKey(settings);
+            }
+        }
+
+        private sealed class SharedState
+        {
+            public FlagKind Flag;
+            public string Game;
+            public bool Race;
+            public bool GameRunning;
+            public string TimingLast;
+            public string TimingBest;
+            public string Logic;
+            public string LapLabelLast;
+            public string LapLabelBest;
+        }
+
+        private void SyncDeviceStates()
+        {
+            CydFlagsSettings settings = Settings;
+            if (settings == null) return;
+
+            lock (_deviceLock)
+            {
+                if (settings.Devices == null)
+                    settings.Devices = new List<CydFlagsDeviceSettings>();
+
+                var states = new List<DeviceState>();
+                foreach (CydFlagsDeviceSettings device in settings.Devices)
+                {
+                    if (device == null) continue;
+                    DeviceState state = FindStateLocked(device);
+                    if (state == null)
+                    {
+                        state = new DeviceState(device);
+                        state.BrightnessDirty =
+                            device.ApplyBrightness || device.DimWhenNoGame;
+                    }
+                    states.Add(state);
+                }
+
+                _deviceStates = states;
+                _selectedDeviceIndex = ClampSelectionLocked(_selectedDeviceIndex, states.Count);
+            }
+        }
+
+        private DeviceState FindState(CydFlagsDeviceSettings device)
+        {
+            if (device == null) return null;
+            lock (_deviceLock)
+            {
+                foreach (DeviceState state in _deviceStates)
+                {
+                    if (state != null && ReferenceEquals(state.Settings, device))
+                        return state;
+                }
+            }
+            return null;
+        }
+
+        private DeviceState FindStateLocked(CydFlagsDeviceSettings device)
+        {
+            foreach (DeviceState state in _deviceStates)
+            {
+                if (state != null && ReferenceEquals(state.Settings, device))
+                    return state;
+            }
+            return null;
+        }
+
+        private DeviceState SelectedState()
+        {
+            lock (_deviceLock)
+            {
+                if (_deviceStates == null || _deviceStates.Count == 0) return null;
+                int index = ClampSelectionLocked(_selectedDeviceIndex, _deviceStates.Count);
+                return _deviceStates[index];
+            }
+        }
+
+        private bool SelectedDeviceUsesBestLap()
+        {
+            CydFlagsDeviceSettings device = SelectedDevice;
+            return device != null && device.ShowBestLap;
+        }
+
+        private CydFlagsDeviceSettings[] DeviceSnapshot()
+        {
+            CydFlagsSettings settings = Settings;
+            if (settings == null) return new CydFlagsDeviceSettings[0];
+            lock (_deviceLock)
+            {
+                if (settings.Devices == null) return new CydFlagsDeviceSettings[0];
+                return settings.Devices.ToArray();
+            }
+        }
+
+        private int DeviceCountLocked()
+        {
+            CydFlagsSettings settings = Settings;
+            if (settings == null || settings.Devices == null) return 0;
+            return settings.Devices.Count;
+        }
+
+        private static int ClampSelectionLocked(int index, int count)
+        {
+            if (count <= 0) return 0;
+            if (index < 0) return 0;
+            if (index >= count) return count - 1;
+            return index;
+        }
+
+        private static void ResetSendState(DeviceState state)
+        {
+            state.LastSentFlag = null;
+            state.LastSentGame = null;
+            state.LastSentRaceMode = null;
+            state.LastSentTiming = null;
+            state.LastSentLogic = null;
+            state.LastSentLapLabel = null;
+            state.LastSentFeatures = null;
+            state.LastSentBrightness = -1;
+            state.LastHeartbeatUtc = DateTime.MinValue;
+            state.LastRaceModeSentUtc = DateTime.MinValue;
+            state.LastTimingSentUtc = DateTime.MinValue;
+            state.LastLogicSentUtc = DateTime.MinValue;
+            state.LastLapLabelSentUtc = DateTime.MinValue;
+            state.LastFeaturesSentUtc = DateTime.MinValue;
+            state.LastFlagSentUtc = DateTime.MinValue;
+            state.LastGameSentUtc = DateTime.MinValue;
+            state.BackoffUntilUtc = DateTime.MinValue;
+            state.Client.ResetStatus();
+        }
+
+        private static string BuildHostKey(CydFlagsDeviceSettings device)
+        {
+            return (device.Host ?? string.Empty) + "|" + device.Port;
+        }
+
+        private string DescribeTargets()
+        {
+            var sb = new StringBuilder();
+            foreach (CydFlagsDeviceSettings device in DeviceSnapshot())
+            {
+                if (device == null) continue;
+                if (sb.Length > 0) sb.Append(", ");
+                sb.Append(device.Name).Append(" @ ").Append(DescribeTarget(device));
+            }
+            return sb.Length == 0 ? "-" : sb.ToString();
         }
 
         private static string SanitizeGame(string game)
