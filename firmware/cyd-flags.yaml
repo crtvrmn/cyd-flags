@@ -156,6 +156,17 @@ display:
       const bool logic_page = race_session && view == 1 && id(feat_logic) && !logic_text.empty();
       const bool clock_page = race_session && view == 2 && id(feat_clock);
 
+      // Pages the corner navigation may visit. Keep these rules in sync with
+      // the on_touch lambda below.
+      const bool nav_tower = id(race_mode) && id(feat_tower) && !timing.empty();
+      const bool nav_logic = id(race_mode) && id(feat_logic) && !logic_text.empty();
+      const bool nav_clock = id(race_mode) && id(feat_clock);
+      const int nav_page_count = (nav_tower ? 1 : 0) + (nav_logic ? 1 : 0) + (nav_clock ? 1 : 0);
+      // The touch lambda blocks whenever a flag is latched, with or without a
+      // link; hide the hint under the same rule so it never advertises dead
+      // buttons.
+      const bool nav_blocked_by_flag = id(feat_flags) && flag != "NONE";
+
       Color bg = Color(12, 14, 20);
       Color fg = Color(235, 235, 240);
 
@@ -212,6 +223,16 @@ display:
       // then get out of the way.
       const bool show_ip = millis() < id(ip_until) && !id(ip_address).state.empty();
 
+      // Corner-navigation hint: a dim < bottom-left and > bottom-right. Hidden
+      // while a flag or the boot IP hint owns the screen, and only drawn when
+      // there is at least one other page to reach. Top corners are reserved.
+      auto draw_nav_hint = [&]() {
+        if (!nav_blocked_by_flag && nav_page_count >= 2 && !show_ip) {
+          it.print(6, H - 16, id(font_small), Color(90, 95, 105), TextAlign::CENTER_LEFT, "<");
+          it.print(W - 6, H - 16, id(font_small), Color(90, 95, 105), TextAlign::CENTER_RIGHT, ">");
+        }
+      };
+
       if (logic_page) {
         // Current lap, live delta to the personal best, and the three sectors.
         // Payload: lap~lapcolor~delta~deltacolor~s1~s1color~s2~s2color~s3~s3color
@@ -257,6 +278,7 @@ display:
           it.print(W - 18, y + 8, id(font_sub), Color(245, 245, 245), TextAlign::CENTER_RIGHT,
                    count > 4 + i * 2 ? f[4 + i * 2].c_str() : "--.---");
         }
+        draw_nav_hint();
         return;
       }
 
@@ -295,6 +317,7 @@ display:
         if (rows == 0) {
           // No relative data yet: keep the clock readable.
           it.print(W / 2, H / 2 - 20, id(font_hero), Color(235, 235, 240), TextAlign::CENTER, clock_text.c_str());
+          draw_nav_hint();
           return;
         }
 
@@ -349,6 +372,7 @@ display:
           draw_time(34, y + 42, id(font_row_name), fields[i][4], fields[i][5], Color(215, 220, 230));
           it.line(4, y + row_h - 2, W - 4, y + row_h - 2, Color(40, 46, 58));
         }
+        draw_nav_hint();
         return;
       }
 
@@ -389,8 +413,11 @@ display:
         it.print(6, H - 12, id(font_small), Color(150, 150, 160), TextAlign::CENTER_LEFT, id(ip_address).state.c_str());
       }
 
-# Full-screen tap toggles the race tower / clock. Coordinates are deliberately
-# not used, so a rough calibration is enough; the whole panel is one button.
+      draw_nav_hint();
+
+# Quadrant navigation: bottom-left = previous page, bottom-right = next page.
+# A 24 px dead cross through the centre (12 px each side) keeps seam taps from
+# picking a page by accident; the top corners are reserved for later.
 # Flags keep priority, and taps outside a race are ignored.
 touchscreen:
   - platform: xpt2046
@@ -405,16 +432,54 @@ touchscreen:
       y_max: 4095
     on_touch:
       - lambda: |-
+          const int W = id(screen).get_width();
+          const int H = id(screen).get_height();
+          const int x = touch.x;
+          const int y = touch.y;
+
+          // 24 px dead cross: ignore the centre seam (12 px each side).
+          if (std::abs(x - W / 2) < 12 || std::abs(y - H / 2) < 12) return;
+
+          // An active flag owns the display; the corners do nothing then.
           const bool blocked_by_flag = id(feat_flags) && id(flag_state) != "NONE";
-          if (id(race_mode) && !blocked_by_flag
-              && (!id(timing_raw).empty() || !id(logic).state.empty())) {
-            int next = id(race_view);
-            for (int i = 0; i < 3; i++) {
-              next = (next + 1) % 3;
-              if ((next == 0 && id(feat_tower)) || (next == 1 && id(feat_logic)) || (next == 2 && id(feat_clock)))
-                break;
+          if (blocked_by_flag) return;
+
+          // Top half is reserved for future functions.
+          if (y < H / 2) return;
+
+          // Taps outside a race are ignored for now.
+          if (!id(race_mode)) return;
+
+          // Same as before: without any race payload the session has not
+          // really started, so ignore taps instead of moving a hidden page.
+          if (id(timing_raw).empty() && id(logic).state.empty()) return;
+
+          // Pages the navigation may visit, indexed like race_view:
+          // 0 = timing tower, 1 = race logic, 2 = clock. Extend this array
+          // (and kPageCount) when a page is added.
+          const int kPageCount = 3;
+          const bool available[kPageCount] = {
+              id(race_mode) && id(feat_tower) && !id(timing_raw).empty(),
+              id(race_mode) && id(feat_logic) && !id(logic).state.empty(),
+              id(race_mode) && id(feat_clock),
+          };
+
+          bool any_available = false;
+          for (int i = 0; i < kPageCount; i++) {
+            if (available[i]) any_available = true;
+          }
+          if (!any_available) return;
+
+          // Bottom-left goes back, bottom-right goes forward; both wrap.
+          const int direction = (x > W / 2) ? 1 : -1;
+          const int view = id(race_view);
+          for (int step = 1; step <= kPageCount; step++) {
+            int candidate = (view + direction * step) % kPageCount;
+            if (candidate < 0) candidate += kPageCount;
+            if (available[candidate]) {
+              id(race_view) = candidate;
+              break;
             }
-            id(race_view) = next;
           }
 font:
   - file: "fonts/DejaVuSansCondensed-Bold.ttf"
@@ -446,7 +511,7 @@ font:
   - file: "fonts/DejaVuSansCondensed-Bold.ttf"
     id: font_small
     size: 13
-    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;!?()[]&+/-_'~"
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;!?()[]&+/-_'~<>"
 
 # ---------------------------------------------------------------------------
 # Backlight
