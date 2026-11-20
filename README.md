@@ -34,8 +34,8 @@ suffix while you are in the pit lane. The IP address is shown for the first
 15 seconds after boot. Every display can be mounted **portrait or landscape**;
 the plugin rotates it at runtime, so one firmware image works for both.
 
-The display redraws on a fixed 300 ms cadence, so rapid flag changes are
-coalesced instead of building up a laggy queue. Page selection, backlight and
+The display redraws on a fixed 300 ms cadence (the rev-limiter page uses
+50 ms with partial updates), so rapid flag changes are coalesced instead of building up a laggy queue. Page selection, backlight and
 WiFi are configured per display; the race data itself is shared.
 
 ```

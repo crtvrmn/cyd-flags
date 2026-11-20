@@ -287,8 +287,9 @@ rotates it at runtime. There are six screen types:
    `--.---` on a neutral background.
 3. **Rev limiter** — large gear, speed in km/h and an RPM bar. The bar turns
    red and the page blinks when the rev limiter is reached. While this page is
-   visible the display redraws at 10 Hz (100 ms) so the bar keeps up; the other
-   pages stay at 300 ms. Available in races and in practice/qualifying.
+   visible the display polls at 20 Hz (50 ms) and only the changed widgets are
+   transferred (RPM bar every frame; gear/speed only when they change). The
+   other pages stay at 300 ms. Available in races and in practice/qualifying.
 4. **Flag** — a flag reported by the game takes over the whole screen, exactly
    like before.
 5. **Clock** — menus, practice, qualifying, and the no-link fallback show the

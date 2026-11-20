@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.4
+
+* **Rev page partial redraw at 20 Hz.** The rev-limiter page no longer repaints
+  the whole 240x320 panel on every frame. The display driver now transfers only
+  the dirty rectangle: the RPM bar is redrawn alone, the gear/speed only when
+  their value changes, and a new page or blink phase still triggers one clean
+  full frame. The page polls at 50 ms and the plugin builds/sends `rev` at 20 Hz
+  (was 10 Hz). The normal clock/flag/tower pages keep their 300 ms cadence.
+* **Why not 50-60 FPS?** A full 240x320 RGB565 frame is ~153 KB; 50 FPS would
+  need >60 Mbit/s, more than the CYD's 40 MHz SPI link can carry. Partial
+  updates avoid that ceiling for the small rev widgets, but the ESPHome HTTP
+  API and the 40 MHz panel bus still cap the practical update rate well below
+  50 FPS. LVGL would need the same bandwidth for a full-screen image.
+* Firmware + plugin change; protocol unchanged. Flash firmware 0.7.4 and update
+  the plugin together.
+
 ## 0.7.3
 
 * **Race pages outside a race.** A new global plugin option controls whether the

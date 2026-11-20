@@ -24,7 +24,7 @@ namespace CydFlags
     [PluginName("CYD Flags")]
     public class CydFlagsPlugin : IPlugin, IDataPlugin, IWPFSettingsV2
     {
-        public const string Version = "0.7.3";
+        public const string Version = "0.7.4";
 
         public CydFlagsSettings Settings;
 
@@ -365,7 +365,7 @@ namespace CydFlags
                 DateTime revNow = DateTime.UtcNow;
                 if (anyRev)
                 {
-                    if ((revNow - _lastRevBuildUtc).TotalMilliseconds >= 100)
+                    if ((revNow - _lastRevBuildUtc).TotalMilliseconds >= 50)
                     {
                         revPayload = RevBuilder.Build(data.NewData);
                         _lastRevBuildUtc = revNow;
