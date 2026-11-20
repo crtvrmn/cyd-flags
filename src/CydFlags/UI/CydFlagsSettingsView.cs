@@ -631,7 +631,7 @@ namespace CydFlags.UI
                 _detailLine.Text = string.Format(
                     CultureInfo.InvariantCulture,
                     "display   {0} ({1}/{2})\nurl       {3}\nlast      {4}    requests {5}\n" +
-                    "flag      {6,-10} game {7}\nerror     {8}",
+                    "flag      {6,-10} game {7}\nerror     {8}\nudp       {9}",
                     name,
                     index + 1,
                     count,
@@ -640,7 +640,8 @@ namespace CydFlags.UI
                     _plugin.RequestsSent,
                     FlagModel.ToOption(_plugin.CurrentFlag),
                     game,
-                    error);
+                    error,
+                    _plugin.UdpStatus);
             }
             catch (Exception)
             {

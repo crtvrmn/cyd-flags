@@ -24,7 +24,7 @@ namespace CydFlags
     [PluginName("CYD Flags")]
     public class CydFlagsPlugin : IPlugin, IDataPlugin, IWPFSettingsV2
     {
-        public const string Version = "0.7.6";
+        public const string Version = "0.7.7";
 
         public CydFlagsSettings Settings;
 
@@ -128,6 +128,20 @@ namespace CydFlags
             {
                 DeviceState state = SelectedState();
                 return state != null ? state.Client.Requests : 0;
+            }
+        }
+
+        public string UdpStatus
+        {
+            get
+            {
+                DeviceState state = SelectedState();
+                if (state == null) return "UDP: no display";
+                if (!state.UdpRxSupported)
+                    return "UDP: unknown" + (string.IsNullOrEmpty(state.UdpRxError) ? "" : " (" + state.UdpRxError + ")");
+                if (state.UdpBlocked)
+                    return "UDP: blocked - tower will be slow (HTTP fallback)";
+                return "UDP: OK (display received " + state.UdpRxCount + ")";
             }
         }
 
@@ -895,6 +909,34 @@ namespace CydFlags
                 LogRequest(state, "brightness " + brightnessTarget);
             }
 
+            if ((now - state.LastUdpCheckUtc).TotalSeconds >= 5)
+            {
+                int udpRx;
+                string udpError;
+                if (state.Client.TryGetUdpRx(out udpRx, out udpError))
+                {
+                    if (!state.UdpRxSupported || udpRx != state.UdpRxCountAtCheck)
+                    {
+                        state.UdpRxSupported = true;
+                        state.UdpRxCount = udpRx;
+                        state.UdpRxCountAtCheck = udpRx;
+                        state.UdpSentAtCheck = state.Udp.Sent;
+                        state.UdpBlocked = false;
+                        state.UdpRxError = string.Empty;
+                    }
+                    else if (state.Udp.Sent - state.UdpSentAtCheck > 10)
+                    {
+                        state.UdpBlocked = true;
+                    }
+                }
+                else
+                {
+                    state.UdpRxSupported = false;
+                    state.UdpRxError = udpError;
+                }
+                state.LastUdpCheckUtc = now;
+            }
+
             if ((now - state.LastHeartbeatUtc).TotalMilliseconds >= settings.HeartbeatMs)
             {
                 state.HeartbeatCounter++;
@@ -1082,6 +1124,13 @@ namespace CydFlags
 
             public DateTime BackoffUntilUtc;
             public int HeartbeatCounter;
+            public DateTime LastUdpCheckUtc;
+            public bool UdpRxSupported;
+            public bool UdpBlocked;
+            public int UdpRxCount;
+            public int UdpRxCountAtCheck = -1;
+            public int UdpSentAtCheck;
+            public string UdpRxError = string.Empty;
             public bool BrightnessDirty;
             public int LastSentBrightness = -1;
             public bool LastGameRunning;
@@ -1217,6 +1266,9 @@ namespace CydFlags
             state.LastSentRev = null;
             state.LastSentDelta = null;
             state.LastSentOrientation = null;
+            state.LastUdpCheckUtc = DateTime.MinValue;
+            state.UdpRxCountAtCheck = -1;
+            state.UdpBlocked = false;
             state.LastSentFeatures = null;
             state.LastSentBrightness = -1;
             state.LastHeartbeatUtc = DateTime.MinValue;

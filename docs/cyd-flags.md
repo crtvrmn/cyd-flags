@@ -25,7 +25,9 @@ All displays receive the same race data, but pages, backlight and WiFi are
 configured per display. A panel that is switched off, unplugged or on the wrong
 IP only backs off itself: the plugin keeps updating the other panels.
 
-Realtime data goes over **UDP**, not HTTP. The race tower is built at 20 Hz
+Realtime data goes over **UDP**, not HTTP. The plugin shows the display's
+received-packet counter in its settings (`UDP: OK`, `UDP: blocked`,
+`UDP: unknown`) so a firewall or wrong-IP problem is visible without guessing. The race tower is built at 20 Hz
 and drawn at 12.5 Hz (80 ms), the rev page is built and drawn at 20 Hz (50 ms),
 race logic at 10 Hz; the clock and flag screens stay at 300 ms. That is roughly
 an order of magnitude less latency than the old HTTP-only path. HTTP is still

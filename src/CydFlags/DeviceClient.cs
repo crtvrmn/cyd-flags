@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Net;
+using System.Globalization;
 
 namespace CydFlags
 {
@@ -121,6 +122,85 @@ namespace CydFlags
         public bool SendBrightness(int percent)
         {
             return Post("number/brightness/set?value=" + percent.ToString());
+        }
+
+
+        /// <summary>Reads the display's UDP receive counter (sensor udp_rx).
+        /// Returns false on old firmware or HTTP errors; callers treat that as
+        /// "UDP status unknown" rather than a device failure.</summary>
+        public bool TryGetUdpRx(out int count, out string error)
+        {
+            count = 0;
+            error = string.Empty;
+            string url;
+            try
+            {
+                url = BuildUrl("sensor/udp_rx");
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+
+            try
+            {
+                var request = (HttpWebRequest)WebRequest.Create(url);
+                request.Method = "GET";
+                request.Timeout = 700;
+                request.ReadWriteTimeout = 700;
+                request.KeepAlive = false;
+                request.Proxy = null;
+                request.UserAgent = "CydFlags/0.1";
+
+                using (var response = (HttpWebResponse)request.GetResponse())
+                using (var reader = new StreamReader(response.GetResponseStream()))
+                {
+                    string body = reader.ReadToEnd();
+                    int marker = body.IndexOf("\"state\":\"", StringComparison.Ordinal);
+                    if (marker < 0)
+                        marker = body.IndexOf("\"value\":\"", StringComparison.Ordinal);
+                    if (marker < 0)
+                    {
+                        error = "udp_rx: unexpected JSON";
+                        return false;
+                    }
+                    marker = body.IndexOf(':', marker) + 1;
+                    int start = body.IndexOf('"', marker) + 1;
+                    int end = body.IndexOf('"', start);
+                    if (start <= 0 || end <= start)
+                    {
+                        error = "udp_rx: unexpected JSON";
+                        return false;
+                    }
+                    string state = body.Substring(start, end - start);
+                    if (!int.TryParse(state, NumberStyles.Integer, CultureInfo.InvariantCulture, out count))
+                    {
+                        error = "udp_rx: not a number";
+                        return false;
+                    }
+                    return true;
+                }
+            }
+            catch (WebException ex)
+            {
+                var http = ex.Response as HttpWebResponse;
+                if (http != null)
+                {
+                    error = "udp_rx HTTP " + (int)http.StatusCode;
+                    http.Dispose();
+                }
+                else
+                {
+                    error = "udp_rx " + ex.Message;
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                error = "udp_rx " + ex.Message;
+                return false;
+            }
         }
 
         private bool Post(string relative)

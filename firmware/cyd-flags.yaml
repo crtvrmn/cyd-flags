@@ -30,7 +30,7 @@ substitutions:
   # On boards without a speaker this is simply silent.
   alarm_sound_pin: GPIO26
   # Shown on the boot splash; update together with the plugin version.
-  firmware_version: "0.7.6"
+  firmware_version: "0.7.7"
 
 esphome:
   name: ${device_name}
@@ -99,6 +99,7 @@ udp:
   on_receive:
     - lambda: |-
         if (data.empty()) return;
+        id(udp_rx_count)++;
         std::string payload(data.begin() + 1, data.end());
         if (!payload.empty() && payload.back() == '\n') payload.pop_back();
         switch (data[0]) {
@@ -917,6 +918,10 @@ globals:
     type: uint32_t
     restore_value: false
     initial_value: "0"
+  - id: udp_rx_count
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
   - id: race_mode
     type: bool
     restore_value: false
@@ -1222,6 +1227,17 @@ number:
       - lambda: |-
           id(link_seen) = true;
           id(link_last_ms) = millis();
+
+sensor:
+  # Test hook for the plugin: how many UDP datagrams has the display received?
+  # The plugin polls this over HTTP to tell whether the fast path really works.
+  - platform: template
+    name: udp_rx
+    id: udp_rx
+    update_interval: 1s
+    accuracy_decimals: 0
+    lambda: |-
+      return (float) id(udp_rx_count);
 
 text_sensor:
   - platform: wifi_info

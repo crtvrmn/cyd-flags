@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.7
+
+* **UDP diagnosis in the plugin.** The display now exposes a `udp_rx` counter
+  over HTTP. The plugin reads it every five seconds and shows one of
+  `UDP: OK (display received N)`, `UDP: blocked - tower will be slow` or
+  `UDP: unknown` in its settings status. This makes a firewall/port problem
+  visible without guessing. The HTTP heartbeat still keeps the link alive.
+* Plugin and firmware 0.7.7; the boot splash shows `v0.7.7`.
+
 ## 0.7.6
 
 * **Boot splash with firmware version.** The display shows `CYD FLAGS` and the
