@@ -6,7 +6,7 @@ Diese Anleitung ist absichtlich Schritt für Schritt geschrieben. Du brauchst
 Am Ende zeigt dein „Cheap Yellow Display“ (CYD):
 
 - im **Rennen**: die Fahrer direkt vor und hinter dir (Platz, Name, Rundenzeit
-  und ein grüner + / roter − Trend-Punkt) und oben links klein die Uhrzeit. Oben steht **LAST** oder
+  und ein Trend-Punkt: blau = neutral, grün + = du holst auf, rot − = du verlierst) und oben links klein die Uhrzeit. Oben steht **LAST** oder
   **BEST** – das stellst du im Plugin ein.
 - im **Rennen** zusätzlich: eine **Racelogic-Seite** mit dem Delta zur besten
   Runde und den drei Sektoren (grün = schneller
@@ -14,7 +14,7 @@ Am Ende zeigt dein „Cheap Yellow Display“ (CYD):
 - außerhalb des Rennens (Menü, Training, Qualifying): **die echte Uhrzeit**,
 - wenn eine Flagge kommt: die Flagge groß auf dem ganzen Bildschirm,
 - eine **Rev-Limiter-Seite** mit großem Gang und km/h, ohne Leiste, sehr schnell
-- eine **SABT-Seite** mit Status und den drei Zugwerten des Simple Active Belt Tensioner
+- eine **SABT-Seite** mit Status und den drei Zugwerten (IDLE, MIN, MAX) des Simple Active Belt Tensioner
   aktualisiert (auch im Training/Qualifying),
 - **Tippen** auf die unteren Ecken: unten rechts = nächste Seite, unten links =
   zurück. Reihenfolge: Turm → Racelogic → Rev-Limiter → SABT → Uhr → Turm. Im
@@ -272,9 +272,9 @@ Starte dein Spiel. SimHub erkennt das Spiel, das Plugin schickt Flaggen und die
 relativen Fahrer zu allen aktivierten Displays.
 
 - **Rennen:** Timing-Turm (vor dir, du, hinter dir) + kleine Uhr oben links.
-  Der Trend-Punkt wird **grün (+)**, wenn du aufholst, und **rot (−)**, wenn du
+  Der Trend-Punkt ist **blau**, solange nichts passiert. Er wird **grün (+)**, wenn du aufholst, und **rot (−)**, wenn du
   verlierst. Beim Hintermann ist es umgekehrt: näher kommen = rot, abhängen =
-  grün. Eine Zahl wird nicht mehr angezeigt. Die Rundenzeit hat
+  grün; die Farbe bleibt stehen, bis sich die Richtung wirklich ändert. Eine Zahl wird nicht mehr angezeigt. Die Rundenzeit hat
   einen farbigen Hintergrund: **violett** = schnellste Runde im Feld, **rot** =
   schneller als deine Runde, **grün** = langsamer. Deine eigene Zeile zeigt
   keinen Abstand (0.00 wäre sinnlos) und ist nur violett, nie rot/grün.

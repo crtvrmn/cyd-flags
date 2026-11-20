@@ -15,7 +15,7 @@ namespace CydFlags
     ///
     /// Row 1 is the car ahead, row 2 the player, row 3 the car behind. Values
     /// are pre-formatted so the ESP32 does not need any floating point or time
-    /// formatting code. Color codes: '-' none, 'G' green, 'R' red, 'P' purple.
+    /// formatting code. Color codes: '-' none, 'B' blue/neutral, 'G' green, 'R' red, 'P' purple.
     /// The player row has an empty gap field (0.00 is meaningless for yourself).
     /// </summary>
     internal static class TimingBuilder
@@ -25,11 +25,17 @@ namespace CydFlags
         private static readonly object TrendLock = new object();
         private static readonly System.Collections.Generic.Dictionary<string, double> LastGapByCar =
             new System.Collections.Generic.Dictionary<string, double>(StringComparer.Ordinal);
+        private static readonly System.Collections.Generic.Dictionary<string, string> LastTrendByCar =
+            new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
 
         /// <summary>Forget gap history when a race ends or the session changes.</summary>
         public static void ResetTrend()
         {
-            lock (TrendLock) LastGapByCar.Clear();
+            lock (TrendLock)
+            {
+                LastGapByCar.Clear();
+                LastTrendByCar.Clear();
+            }
         }
 
         public static bool IsRaceSession(StatusDataBase data)
@@ -86,15 +92,69 @@ namespace CydFlags
 
         private static void FindNeighbours(StatusDataBase data, out Opponent ahead, out Opponent behind)
         {
-            ahead = First(data.OpponentsAheadOnTrack);
-            behind = First(data.OpponentsBehindOnTrack);
+            ahead = null;
+            behind = null;
 
-            // Some games do not fill the on-track lists; fall back to the
-            // neighbouring overall positions so the tower is still useful.
-            if (ahead == null && data.Position > 1)
-                ahead = AtPosition(data.Opponents, data.Position - 1);
-            if (behind == null && data.Position > 0)
-                behind = AtPosition(data.Opponents, data.Position + 1);
+            // Prefer the overall position. In a two-car race the ghost can
+            // appear in BOTH on-track lists (or the "ahead" list may contain
+            // the car behind), which made the same driver appear twice. The
+            // position relative to the player is unambiguous.
+            int playerPosition = data.Position;
+            if (playerPosition > 0)
+            {
+                foreach (Opponent opponent in Enumerate(data.Opponents))
+                {
+                    if (opponent == null || opponent.IsPlayer || opponent.Position <= 0) continue;
+                    if (opponent.Position < playerPosition)
+                    {
+                        if (ahead == null || opponent.Position > ahead.Position) ahead = opponent;
+                    }
+                    else if (opponent.Position > playerPosition)
+                    {
+                        if (behind == null || opponent.Position < behind.Position) behind = opponent;
+                    }
+                }
+            }
+
+            // Some games do not fill Position on every opponent; use the
+            // on-track lists only to fill the missing side.
+            if (ahead == null)
+                ahead = First(data.OpponentsAheadOnTrack);
+            if (behind == null)
+                behind = First(data.OpponentsBehindOnTrack);
+
+            // Never show the same car in both rows.
+            if (ahead != null && behind != null && SameCar(ahead, behind))
+            {
+                if (behind.Position > playerPosition && behind.Position > 0)
+                    ahead = null;
+                else
+                    behind = null;
+            }
+
+            if (ahead == null && behind == null) return;
+
+            // A ghost that is listed as ahead while its position says behind
+            // is still the car behind; keep the rows consistent.
+            if (ahead != null && behind == null && playerPosition > 0 &&
+                ahead.Position > playerPosition)
+            {
+                behind = ahead;
+                ahead = null;
+            }
+            else if (behind != null && ahead == null && playerPosition > 0 &&
+                     behind.Position < playerPosition)
+            {
+                ahead = behind;
+                behind = null;
+            }
+        }
+
+        private static bool SameCar(Opponent first, Opponent second)
+        {
+            if (ReferenceEquals(first, second)) return true;
+            return first.Position == second.Position &&
+                   string.Equals(Clean(first.Name), Clean(second.Name), StringComparison.Ordinal);
         }
 
         private static string BuildRows(StatusDataBase data, Opponent ahead, Opponent behind,
@@ -118,7 +178,7 @@ namespace CydFlags
             foreach (object item in items)
             {
                 Opponent opponent = item as Opponent;
-                if (opponent != null) return opponent;
+                if (opponent != null && !opponent.IsPlayer) return opponent;
             }
             return null;
         }
@@ -204,18 +264,34 @@ namespace CydFlags
             string key = (isAhead ? "A|" : "B|") + opponent.Position.ToString(Inv) + "|" + Clean(opponent.Name);
             double previous;
             bool known;
+            string previousTrend;
             lock (TrendLock)
             {
                 if (LastGapByCar.Count > 200) LastGapByCar.Clear();
                 known = LastGapByCar.TryGetValue(key, out previous);
                 LastGapByCar[key] = gapSeconds;
+                if (!LastTrendByCar.TryGetValue(key, out previousTrend)) previousTrend = "B";
             }
 
-            if (!known || Math.Abs(gapSeconds - previous) < 0.02) return "-";
+            // Blue is the neutral state. Once the gap is closing/opening the
+            // green/red disc stays visible until the direction actually
+            // changes; a steady gap must not make the disc disappear.
+            if (!known) return "B";
 
-            bool closing = gapSeconds < previous;
-            if (isAhead) return closing ? "G" : "R";
-            return closing ? "R" : "G";
+            bool closing = gapSeconds < previous - 0.02;
+            bool opening = gapSeconds > previous + 0.02;
+            string trend = previousTrend;
+            if (closing)
+                trend = isAhead ? "G" : "R";
+            else if (opening)
+                trend = isAhead ? "R" : "G";
+
+            lock (TrendLock)
+            {
+                if (LastTrendByCar.Count > 200) LastTrendByCar.Clear();
+                LastTrendByCar[key] = trend;
+            }
+            return trend;
         }
 
         private static string TimeCode(double value, double best, double player, bool isPlayer)

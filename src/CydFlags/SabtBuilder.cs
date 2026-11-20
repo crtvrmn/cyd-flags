@@ -7,7 +7,7 @@ namespace CydFlags
     /// <summary>
     /// Reads the SABT (Simple Active Belt Tensioner) SimHub properties.
     /// SABT exposes tension values already divided by 10, so they are shown
-    /// as-is. Returns an empty string when SABT is not installed/running.
+    /// as-is. Returns a WAITING payload when SABT is not installed/running.
     /// </summary>
     internal static class SabtBuilder
     {
@@ -18,10 +18,11 @@ namespace CydFlags
             object enabled = Read(pluginManager, "SABT.IsEnabled");
             object idle = Read(pluginManager, "SABT.IdleTension");
             object resting = Read(pluginManager, "SABT.RestingTension");
+            if (resting == null) resting = Read(pluginManager, "SABT.MinimumTension");
             object maximum = Read(pluginManager, "SABT.MaximumTension");
 
             if (enabled == null && idle == null && resting == null && maximum == null)
-                return string.Empty;
+                return "~--~--~--";
 
             return (ToBool(enabled) ? "1" : "0")
                 + "~" + Number(idle)

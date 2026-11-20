@@ -18,11 +18,11 @@ delaying the others.
 
 | situation | screen |
 |-----------|--------|
-| race session | relative tower: car ahead, you, car behind — position, name, lap time and a green + / red − trend disc; optional live delta-to-previous-lap bar |
+| race session | relative tower: car ahead, you, car behind — position, name, lap time and a persistent trend disc (blue neutral, green +, red −); optional live delta-to-previous-lap bar |
 | race session, bottom-right corner | next page: race logic / rev limiter / SABT / clock; bottom-left goes back |
 | race logic | delta to best and sector times (green/red vs. your best) |
 | rev limiter | large gear and km/h only, updated at 33 Hz; also in practice/qualifying |
-| SABT | belt-tensioner state and idle/resting/maximum tension from the Simple Active Belt Tensioner plugin |
+| SABT | belt-tensioner state and idle/minimum/maximum tension from the Simple Active Belt Tensioner plugin |
 | menus / practice / qualifying | large clock and date, with a small alarm shortcut top-left |
 | alarm time reached | full-screen flashing ALARM; tap anywhere to stop |
 | any flag | full-screen flag (red, yellow, blue, white, checkered, black, orange…) |
@@ -239,7 +239,7 @@ POST /text/timing/set?value=...         # position~name~trend~trendcolor~lap~lap
 POST /text/logic/set?value=...          # lap~lapcolor~delta~deltacolor~s1~...~s3color
 POST /text/lap_label/set?value=LAST     # LAST / BEST / LAST PIT / BEST PIT
 POST /text/rev/set?value=4~123~7800~8500~8000~92~0  # gear/speed drawn
-POST /text/sabt/set?value=1~32.5~40.0~75.0  # enabled~idle~resting~maximum
+POST /text/sabt/set?value=1~32.5~40.0~75.0  # enabled~idle~minimum~maximum
 POST /text/delta/set?value=-0.421       # signed seconds, empty hides
 POST /text/orientation/set?value=portrait  # or landscape
 POST /text/features/set?value=flags,clock,tower,logic,rev,sabt  # or none

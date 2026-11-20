@@ -1,12 +1,26 @@
 # Changelog
 
+## 0.8.1
+
+* **SABT page fix.** The released SABT plugin exposes `SABT.MinimumTension`,
+  not only `SABT.RestingTension`; both are accepted now. The page is reachable
+  whenever SABT is enabled and the display has a link, and shows **WAITING**
+  with `--` until the first SABT frame arrives instead of disappearing.
+* **Trend disc stays visible.** Blue is the neutral state; a green/red disc
+  remains until the gap direction actually changes instead of vanishing on
+  every unchanged sample.
+* **Two-car/ghost fix.** The tower now picks the neighbours from their overall
+  position and never shows the same opponent in both rows.
+* Flags keep absolute priority over every page.
+* Plugin and firmware 0.8.1.
+
 ## 0.8.0
 
 * **SABT page.** New page shows the Simple Active Belt Tensioner state
   (**ACTIVE** / **OFF**) and the idle, resting and maximum tension values. The
-  plugin reads `SABT.IsEnabled`, `SABT.IdleTension`, `SABT.RestingTension` and
-  `SABT.MaximumTension`; SABT is optional, the page only appears when the
-  properties are available and the page is enabled.
+  plugin reads `SABT.IsEnabled`, `SABT.IdleTension`, `SABT.MinimumTension`
+  (resting alias) and `SABT.MaximumTension`; SABT is optional, the page only
+  appears when the page is enabled (it shows WAITING until data arrives).
 * **Cleaner plugin UI.** The heartbeat, minimum-gap, HTTP/UDP port and request
   log fields are gone — the plugin manages those values. Displays are shown as
   clickable cards with name, host and enabled state, so several panels cannot be

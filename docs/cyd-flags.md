@@ -11,7 +11,7 @@ game on one or more 2.8" **Cheap Yellow Displays** (ESP32-2432S028R):
 
 Outside a race session (menus, practice, qualifying) the display is a clock.
 In a real race session it shows the car ahead, your car and the car behind with
-position, driver name, lap time and a green + / red − trend disc — plus a small clock in the top-left.
+position, driver name, lap time and a trend disc (blue neutral, green +, red −) — plus a small clock in the top-left.
 The header says **LAST** or **BEST** (selectable per display in the plugin) and
 turns into **LAST PIT** while you are in the pit lane.
 When a flag is active it still takes over the whole screen. At boot the panel
@@ -287,12 +287,14 @@ rotates it at runtime. There are seven screen types:
    clock sits in the top-left; no date. The header above the rows says **LAST**
    or **BEST** (plugin setting) and **PIT** is appended while you are in the pit
    lane. By default the tower is also available in practice and qualifying.
-   The disc is a green **+** when you are gaining and a red **−** when you are
-   losing (for the car behind, being caught is red and pulling away is green).
-   No numeric gap is drawn. The lap time gets a background: **purple** for the
-   fastest lap, **red** when it is faster than your own lap, **green** when it
-   is slower. Your own row has no disc and can only be purple, never red/green
-   against itself.
+   The disc is **blue** when neutral, a green **+** when you are gaining and a
+   red **−** when you are losing (for the car behind, being caught is red and
+   pulling away is green). Once green/red it stays visible until the direction
+   actually changes; only the first neutral sample is blue. No numeric gap is
+   drawn. Flags still take priority over the whole page. The lap time gets a
+   background: **purple** for the fastest lap, **red** when it is faster than
+   your own lap, **green** when it is slower. Your own row has no disc and can
+   only be purple, never red/green against itself.
 2. **Race logic** — a third race page with a live delta to your personal best
    and the three sector times; the current-lap time was removed so the cards
    stay readable. Each sector card is
@@ -305,9 +307,11 @@ rotates it at runtime. There are seven screen types:
    80 ms, the clock/flag pages 300 ms. Available in races
    and in practice/qualifying.
 4. **SABT** — reads the SimHub properties of the Simple Active Belt Tensioner
-   plugin (`SABT.IsEnabled`, `SABT.IdleTension`, `SABT.RestingTension`,
-   `SABT.MaximumTension`) and shows **ACTIVE**/**OFF** plus the three tension
-   values. The page works in the menus too, because it does not need game data.
+   plugin (`SABT.IsEnabled`, `SABT.IdleTension`, `SABT.MinimumTension` — with
+   `SABT.RestingTension` accepted as an alias — and `SABT.MaximumTension`) and
+   shows **ACTIVE**/**OFF** plus the three tension values (`IDLE`, `MIN`,
+   `MAX`). Before the first SABT frame the page shows **WAITING** and `--`.
+   The page works in the menus too, because it does not need game data.
 5. **Flag** — a flag reported by the game takes over the whole screen, exactly
    like before.
 6. **Clock** — menus, practice, qualifying, and the no-link fallback show the
@@ -451,7 +455,7 @@ curl -X POST 'http://cyd-flags.local/text/orientation/set?value=portrait'
 # rev limiter: gear~speed_kmh~... (only the first two fields are drawn)
 curl -X POST 'http://cyd-flags.local/text/rev/set?value=4~123~7800~8500~8000~92~0'
 
-# SABT: enabled~idle~resting~maximum
+# SABT: enabled~idle~minimum~maximum (resting is accepted as an alias)
 curl -X POST 'http://cyd-flags.local/text/sabt/set?value=1~32.5~40.0~75.0'
 
 # previous-lap delta: signed seconds, empty hides the bar
@@ -463,8 +467,8 @@ curl -X POST 'http://cyd-flags.local/text/lap_label/set?value=LAST'
 # relative timing rows, max 255 chars. Three rows separated by ';', six
 # fields per row separated by '~':
 # position~name~trend~trendcolor~lap~lapcolor
-# trend is + or - (empty when stable); trendcolor G/R, lapcolor P/R/G/-.
-# Colors: -=none, G=green, R=red, P=purple (fastest lap).
+# trend is +, - or empty (blue neutral); trendcolor B/G/R, lapcolor P/R/G/-.
+# Colors: -=none, B=blue, G=green, R=red, P=purple (fastest lap).
 curl -X POST 'http://cyd-flags.local/text/timing/set?value=6~Fabio~%2B~G~1:47.383~P%3B7~YOU~~-~1:48.102~-%3B10~Marcel~-~R~1:54.765~R'
 
 # race-logic page: delta to personal best, three sectors
