@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.1
+
+* **Clear connection status.** The CYD no longer shows the generic `NO LINK`.
+  A missing WiFi association shows **NO WIFI** (or **WIFI: SETUP AP** while the
+  fallback access point is active); WiFi without a SimHub heartbeat shows
+  **NO SIMHUB**. When both links are up the status line is omitted, so the
+  normal clock/date screen is not cluttered with redundant "OK" text.
+* This is a firmware-side change; plugin 0.7.1 has no protocol changes and is
+  compatible with firmware 0.7.x.
+
 ## 0.7.0
 
 * **Multiple CYD displays at once.** Each display has its own name, host/port,

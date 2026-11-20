@@ -154,7 +154,7 @@ namespace CydFlags.UI
                 root.Children.Add(new TextBlock
                 {
                     Text = "The heartbeat tells each display that the PC is still alive; without one it shows " +
-                           "NO LINK after a few seconds. A small gap between flag packets avoids flicker during " +
+                           "NO SIMHUB after a few seconds. A small gap between flag packets avoids flicker during " +
                            "rapid flag changes.",
                     TextWrapping = TextWrapping.Wrap,
                     MaxWidth = 620,

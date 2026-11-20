@@ -104,7 +104,7 @@ namespace CydFlags
         public bool Enabled = true;
 
         /// <summary>How often the plugin pings every display so it can show LIVE.
-        /// The display turns to NO LINK after 5 seconds without a heartbeat.</summary>
+        /// The display turns to NO SIMHUB after 5 seconds without a heartbeat.</summary>
         public int HeartbeatMs = 1000;
 
         /// <summary>Minimum spacing between flag / game updates, to avoid

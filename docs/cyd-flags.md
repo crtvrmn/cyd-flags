@@ -332,7 +332,8 @@ lease (bottom of the clock screen, top-right during a race), then disappears. Th
 | Black | near black | BLACK | PENALTY - PIT |
 | Orange | orange | ORANGE | MEATBALL - DAMAGE |
 | no race / idle | dark | real clock (HH:MM, NTP) | date |
-| no heartbeat for 5 s | dark | real clock (amber) | NO LINK |
+| no WiFi association | dark | real clock | NO WIFI (or WIFI: SETUP AP in the fallback AP) |
+| WiFi up, no SimHub heartbeat for 5 s | dark | real clock | NO SIMHUB |
 
 The delta bar under the tower is computed on the PC from `CurrentLap`,
 `CurrentLapTime` and `TrackPositionPercent`: the plugin records the previous
@@ -349,8 +350,12 @@ When no flag is active the hero area becomes a clock. It uses ESPHome's SNTP
 component (`timezone: Europe/Berlin`); until the first NTP sync it shows
 `--:--` / `CLOCK SYNC`. Outside a race session this is the main screen. During
 a race the clock shrinks to the top-left corner and the timing tower fills the
-panel. When the SimHub link is down the big clock stays visible with **NO LINK**
-as the subtitle.
+panel. Connection problems use a full-screen status instead of the vague
+`NO LINK`: **NO WIFI** if the ESP32 has no station association (or
+**WIFI: SETUP AP** while the fallback access point is active), and **NO SIMHUB**
+if WiFi is up but no heartbeat has arrived for 5 seconds. When both connections
+are present the status line is omitted because it would only repeat itself;
+the normal clock/date screen is shown.
 
 The plugin reads SimHub's `Flag_Red`, `Flag_Black`, `Flag_Checkered`,
 `Flag_Orange`, `Flag_Yellow`, `Flag_Blue`, `Flag_White`, `Flag_Green`
@@ -448,8 +453,9 @@ connection backoff, so a timeout on one panel does not delay the others.
 
 | symptom | cause / fix |
 |---------|-------------|
-| **NO LINK** on the display | PC cannot reach the CYD. Check host/IP in the plugin, ping the display, try the IP instead of `.local`. The plugin backs off briefly after failures but keeps retrying. |
-| Only **one of several** displays shows NO LINK | Select that display in the **Displays** dropdown and check its host/IP. The other displays keep updating; each panel has its own connection and backoff. A stale display entry can be removed with **Remove device**. |
+| **NO WIFI** on the display | The ESP32 has no station association. Check the router/SSID, move closer, or re-enter WiFi in the plugin. `WIFI: SETUP AP` means the fallback AP is active: connect to `CYD Flags fallback` and open `http://192.168.4.1`. |
+| **NO SIMHUB** on the display | WiFi is fine but no heartbeat reaches the CYD. Start SimHub, select the display in the plugin, press **Test connection**, and check host/IP. The plugin backs off briefly after failures but keeps retrying. |
+| Only **one of several** displays shows NO SIMHUB | Select that display in the **Displays** dropdown and check its host/IP. The other displays keep updating; each panel has its own connection and backoff. A stale display entry can be removed with **Remove device**. |
 | Plugin status says **404** | Entity name mismatch. Only rename entities if you also change `DeviceClient.cs`; the default names are `flag`, `game`, `race`, `timing`, `logic`, `lap_label`, `features`, `wifi_ssid`, `wifi_password`, `wifi_connect`, `heartbeat`, `brightness`. |
 | **Page list / WiFi save does nothing** | The display is running an older firmware before 0.6.0. Flash the current factory/OTA image; the plugin then finds the `features` and `wifi_*` entities. |
 | **WiFi is gone after an update** | A **factory** USB flash erases NVS. Use the `.ota.bin` for wireless updates, or enter the credentials again with **Save WiFi on display**. |

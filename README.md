@@ -25,7 +25,8 @@ delaying the others.
 | menus / practice / qualifying | large clock and date, with a small alarm shortcut top-left |
 | alarm time reached | full-screen flashing ALARM; tap anywhere to stop |
 | any flag | full-screen flag (red, yellow, blue, white, checkered, black, orange…) |
-| no heartbeat from SimHub for 5 s | clock with `NO LINK` |
+| no WiFi association | clock with `NO WIFI` (or `WIFI: SETUP AP` in the fallback AP) |
+| WiFi up, no SimHub heartbeat for 5 s | clock with `NO SIMHUB` |
 
 Flags always take priority over the timing pages. The header of the tower shows
 **LAST** or **BEST** (selectable per display in the plugin), with a **PIT**

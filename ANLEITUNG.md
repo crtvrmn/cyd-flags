@@ -25,8 +25,10 @@ Am Ende zeigt dein „Cheap Yellow Display“ (CYD):
 Du kannst **mehrere Displays** gleichzeitig betreiben. Sie zeigen alle dieselben
 Renndaten; Seitenauswahl, Helligkeit und WLAN richtest du pro Display ein.
 
-Wenn SimHub nicht läuft oder der PC aus ist, zeigt das Display weiterhin die
-Uhrzeit; als Untertitel steht dann **NO LINK**.
+Wenn das Display **kein WLAN** hat, zeigt es Uhrzeit und **NO WIFI** (im
+Einrichtungsmodus **WIFI: SETUP AP**). Hat es WLAN, aber SimHub läuft nicht oder
+der PC ist aus, steht dort **NO SIMHUB**. Sind beide Verbindungen da, wird
+keine dieser Meldungen angezeigt – dann steht dort das normale Datum.
 
 ---
 
@@ -124,7 +126,7 @@ Wenn diese Abfrage **nicht** kommt (anderer Browser, Treiber, ältere
 ESPHome-Web-Version): Kabel abziehen, wieder anstecken und den Abschnitt
 1.5 benutzen.
 
-Der Bildschirm leuchtet jetzt. Es kann sein, dass noch **NO LINK** oder
+Der Bildschirm leuchtet jetzt. Es kann sein, dass noch **NO WIFI**, **NO SIMHUB** oder
 `--:--` angezeigt wird. Das ist normal, bis SimHub läuft und die Uhrzeit
 synchronisiert ist.
 
@@ -287,7 +289,8 @@ relativen Fahrer zu allen aktivierten Displays.
 > Hinweis, dass du gerade in der Boxengasse bist – keine offizielle Flagge.
 - **Menü / Training / Qualifying:** große Uhrzeit + Datum
 - **Flagge aktiv:** große Flaggenanzeige (hat Vorrang)
-- **SimHub aus / keine Verbindung:** Uhrzeit + **NO LINK**
+- **Kein WLAN:** Uhrzeit + **NO WIFI** (oder **WIFI: SETUP AP**)
+- **WLAN da, SimHub aus / keine Verbindung:** Uhrzeit + **NO SIMHUB**
 
 ---
 
@@ -299,7 +302,8 @@ relativen Fahrer zu allen aktivierten Displays.
 | Display **rebootet ständig** / im Log steht `Guru Meditation` | Veraltete Firmware. Aktuelle Datei aus Abschnitt 1.1 neu flashen, danach RST drücken. |
 | Display **weiß**, **Streifen** oder falsche Farben | Falscher Bildschirm-Chip. Eine der anderen beiden Dateien aus Abschnitt 1.1 flashen. |
 | Bild steht **auf dem Kopf** | Im Plugin unter **Display orientation** das andere Format wählen. Wenn es dann immer noch kopfüber ist, hilft nur eigene Firmware mit `display_rotation: "270"`. |
-| **NO LINK** trotz laufendem SimHub | IP im Plugin prüfen, Display und PC im gleichen WLAN, `Test connection` drücken. |
+| **NO WIFI** auf dem Display | Display ist nicht im WLAN. Router/SSID prüfen, näher stellen oder WLAN im Plugin neu speichern. **WIFI: SETUP AP** heißt: Einrichtungsmodus aktiv – mit `CYD Flags fallback` verbinden und `http://192.168.4.1` öffnen. |
+| **NO SIMHUB** auf dem Display | WLAN ist da, aber SimHub sendet nicht. SimHub starten, im Plugin das Display auswählen und **Test connection** drücken; IP/Host prüfen. |
 | Plugin erscheint **nicht** in SimHub | DLL liegt im falschen Ordner, SimHub nicht neu gestartet, oder Windows blockiert die DLL (Rechtsklick → Eigenschaften → „Zulassen“). |
 | Uhrzeit ist **falsch** | Display hat kein Internet (NTP) oder eine andere Zeitzone. In `firmware/cyd-flags.yaml` steht `timezone: Europe/Berlin`; für andere Länder anpassen. |
 | Uhrzeit zeigt **--:--** | Die Uhr hat noch keine Internetzeit bekommen. Warten oder Internet/router prüfen. |

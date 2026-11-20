@@ -24,7 +24,7 @@ namespace CydFlags
     [PluginName("CYD Flags")]
     public class CydFlagsPlugin : IPlugin, IDataPlugin, IWPFSettingsV2
     {
-        public const string Version = "0.7.0";
+        public const string Version = "0.7.1";
 
         public CydFlagsSettings Settings;
 
@@ -646,7 +646,7 @@ namespace CydFlags
             {
                 // Forget what was sent while the plugin was switched off, so
                 // re-enabling pushes a complete state instead of resuming a
-                // stale cache (the panels have shown NO LINK in the meantime).
+                // stale cache (the panels have shown NO SIMHUB in the meantime).
                 if (_wasGloballyEnabled)
                 {
                     _wasGloballyEnabled = false;

@@ -126,6 +126,12 @@ display:
       const bool portrait = H > W;
 
       const bool link = id(link_seen) && (millis() - id(link_last_ms) < 5000);
+      // WiFi and SimHub are reported separately: a missing heartbeat has a
+      // different cause (PC/SimHub off) than a missing WiFi association.
+      const bool wifi_connected = wifi::global_wifi_component != nullptr
+                                  && wifi::global_wifi_component->is_connected();
+      const bool wifi_ap = wifi::global_wifi_component != nullptr
+                           && wifi::global_wifi_component->is_ap_active();
       const std::string flag = id(flag_state);
       const bool flag_active = id(feat_flags) && link && flag != "NONE";
       const bool checkered = flag_active && flag == "CHECKERED";
@@ -277,11 +283,59 @@ display:
         return;
       }
 
+      // Connection screen: say which link is missing instead of a vague
+      // "NO LINK". When WiFi and SimHub are both present this is skipped, so
+      // the normal clock does not repeat two redundant "OK" labels.
+      if (!wifi_connected || !link) {
+        it.fill(Color(12, 14, 20));
+        std::string status;
+        std::string hint;
+        Color status_color(255, 185, 70);
+        if (!wifi_connected) {
+          if (wifi_ap) {
+            status = "WIFI: SETUP AP";
+            hint = "CYD Flags fallback / 192.168.4.1";
+          } else {
+            status = "NO WIFI";
+            hint = "CHECK WIFI / ROUTER";
+          }
+        } else {
+          status = "NO SIMHUB";
+          hint = "START SIMHUB ON PC";
+          status_color = Color(130, 200, 255);
+        }
+        it.print(W / 2, portrait ? 132 : 96, id(font_hero), Color(235, 235, 240),
+                 TextAlign::CENTER, clock_text.c_str());
+        it.print(W / 2, portrait ? 194 : 150, id(font_sub), status_color,
+                 TextAlign::CENTER, status.c_str());
+        it.print(W / 2, portrait ? 222 : 178, id(font_small), Color(160, 165, 175),
+                 TextAlign::CENTER, hint.c_str());
+
+        // Keep the local alarm reachable even when SimHub/WiFi is down.
+        if (id(feat_clock)) {
+          const bool armed = id(alarm_enabled);
+          const Color alarm_color = armed ? Color(255, 120, 90) : Color(150, 155, 165);
+          const int ax = 18, ay = 18;
+          it.circle(ax, ay, 8, alarm_color);
+          it.line(ax, ay, ax, ay - 5, alarm_color);
+          it.line(ax, ay, ax + 5, ay, alarm_color);
+          it.line(ax - 7, ay - 9, ax - 3, ay - 5, alarm_color);
+          it.line(ax + 7, ay - 9, ax + 3, ay - 5, alarm_color);
+          if (armed) {
+            char alarm_text[10];
+            snprintf(alarm_text, sizeof(alarm_text), "AL %02d:%02d",
+                     id(alarm_hour), id(alarm_minute));
+            it.print(ax + 14, ay, id(font_small), alarm_color, TextAlign::CENTER_LEFT, alarm_text);
+          }
+        }
+        return;
+      }
+
       // Nothing enabled for this state (e.g. flags-only and no flag): say so
       // instead of leaving a confusing clock that the user disabled.
       if (!race && !logic_page && !rev_page && !flag_active && !id(feat_clock) && !clock_page) {
         it.print(W / 2, H / 2, id(font_sub), Color(130, 135, 145), TextAlign::CENTER,
-                 link ? "NO PAGE" : "NO LINK");
+                 "NO PAGE");
         return;
       }
 
@@ -508,24 +562,24 @@ display:
       // Clock / flag screen. Flag names keep priority over the clock.
       std::string title = clock_text;
       std::string sub = date_text;
-      if (!flag_active) {
-        if (!link) sub = "NO LINK";
-      } else if (flag == "GREEN") {
-        title = "GREEN"; sub = "TRACK CLEAR";
-      } else if (flag == "YELLOW") {
-        title = "YELLOW"; sub = "CAUTION";
-      } else if (flag == "BLUE") {
-        title = "BLUE"; sub = "LET FASTER CARS BY";
-      } else if (flag == "WHITE") {
-        title = "WHITE"; sub = "FINAL LAP";
-      } else if (flag == "CHECKERED") {
-        title = "FINISH"; sub = "CHECKERED FLAG";
-      } else if (flag == "RED") {
-        title = "RED"; sub = "SESSION STOPPED";
-      } else if (flag == "BLACK") {
-        title = "BLACK"; sub = "PENALTY - PIT";
-      } else if (flag == "ORANGE") {
-        title = "ORANGE"; sub = "MEATBALL - DAMAGE";
+      if (flag_active) {
+        if (flag == "GREEN") {
+          title = "GREEN"; sub = "TRACK CLEAR";
+        } else if (flag == "YELLOW") {
+          title = "YELLOW"; sub = "CAUTION";
+        } else if (flag == "BLUE") {
+          title = "BLUE"; sub = "LET FASTER CARS BY";
+        } else if (flag == "WHITE") {
+          title = "WHITE"; sub = "FINAL LAP";
+        } else if (flag == "CHECKERED") {
+          title = "FINISH"; sub = "CHECKERED FLAG";
+        } else if (flag == "RED") {
+          title = "RED"; sub = "SESSION STOPPED";
+        } else if (flag == "BLACK") {
+          title = "BLACK"; sub = "PENALTY - PIT";
+        } else if (flag == "ORANGE") {
+          title = "ORANGE"; sub = "MEATBALL - DAMAGE";
+        }
       }
 
       const bool clock_screen = !flag_active;
@@ -613,7 +667,7 @@ touchscreen:
           // Idle clock screen: top-left opens the alarm setup.
           const bool touch_link = id(link_seen) && (millis() - id(link_last_ms) < 5000);
           const bool touch_flag = id(feat_flags) && touch_link && id(flag_state) != "NONE";
-          const bool touch_race = id(race_mode) && !touch_flag
+          const bool touch_race = id(race_mode) && touch_link && !touch_flag
                                   && (!id(timing_raw).empty() || !id(logic).state.empty());
           if (!touch_race && !touch_flag && id(feat_clock)
               && x < W / 2 && y < H / 2) {
