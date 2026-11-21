@@ -283,7 +283,9 @@ The panel can be portrait (240×320) or landscape (320×240); the plugin
 rotates it at runtime. There are seven screen types:
 
 1. **Race timing** — only during a real race session. Three rows (ahead, you,
-   behind), each with position, driver name, lap time and a trend disc. A small
+   behind), each with position, driver name, lap time and a trend disc. If the
+   player is first/last, the missing side is omitted instead of showing a
+   position 0 row. A small
    clock sits in the top-left; no date. The header above the rows says **LAST**
    or **BEST** (plugin setting) and **PIT** is appended while you are in the pit
    lane. By default the tower is also available in practice and qualifying.
@@ -469,6 +471,7 @@ curl -X POST 'http://cyd-flags.local/text/lap_label/set?value=LAST'
 # fields per row separated by '~':
 # position~name~trend~trendcolor~lap~lapcolor
 # trend is +, - or empty (blue neutral); trendcolor B/G/R, lapcolor P/R/G/-.
+# A missing ahead/behind row is sent as an empty string and not drawn.
 # Colors: -=none, B=blue, G=green, R=red, P=purple (fastest lap).
 curl -X POST 'http://cyd-flags.local/text/timing/set?value=6~Fabio~%2B~G~1:47.383~P%3B7~YOU~~-~1:48.102~-%3B10~Marcel~-~R~1:54.765~R'
 

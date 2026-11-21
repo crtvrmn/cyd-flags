@@ -212,7 +212,8 @@ namespace CydFlags
             double playerLap, bool bestLapMode, string gapColor)
         {
             if (opponent == null)
-                return "0~---~~-~--:--.---~-";
+                // Missing side (first/last place): the firmware skips empty rows.
+                return string.Empty;
 
             object gap = opponent.RelativeGapToPlayer;
             double gapSeconds;

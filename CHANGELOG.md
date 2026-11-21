@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.4
+
+* **Readable +/− trend symbols.** The white symbol is now centered in each
+  colored disc instead of sitting above it.
+* **No empty tower rows.** When the player is first or last, the missing side
+  is omitted instead of showing a position 0 row.
+
 ## 0.8.3
 
 * **Sector 3 and centered sector labels.** `Sector3Time` is used as the

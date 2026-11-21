@@ -30,7 +30,7 @@ substitutions:
   # On boards without a speaker this is simply silent.
   alarm_sound_pin: GPIO26
   # Shown on the boot splash; update together with the plugin version.
-  firmware_version: "0.8.3"
+  firmware_version: "0.8.4"
 
 esphome:
   name: ${device_name}
@@ -651,8 +651,12 @@ display:
         // driver name noticeably bigger.
         const int row_h = portrait ? 80 : 58;
         const int top = portrait ? 24 : 20;
+        int drawn = 0;
         for (int i = 0; i < rows; i++) {
-          int y = top + i * row_h;
+          // First/last place has no car on one side; the plugin sends an
+          // empty row there. Skip it instead of drawing "position 0".
+          if (fields[i][1].empty()) continue;
+          int y = top + drawn * row_h;
           if (i == 1) {
             it.filled_rectangle(0, y, W, row_h - 2, Color(22, 32, 50));
           }
@@ -673,13 +677,16 @@ display:
             else if (fields[i][3] == "R") trend = Color(200, 30, 35);
             it.filled_circle(W - 17, y + 23, 12, trend);
             if (!fields[i][2].empty()) {
-              it.print(W - 17, y + 11, id(font_row_name), Color(8, 8, 10),
+              // Center the + / - in the disc; white reads clearly on all
+              // three trend colours.
+              it.print(W - 17, y + 23, id(font_row_name), Color(255, 255, 255),
                        TextAlign::CENTER, fields[i][2].c_str());
             }
           }
 
           draw_time(34, y + 42, id(font_row_name), fields[i][4], fields[i][5], Color(215, 220, 230));
           it.line(4, y + row_h - 2, W - 4, y + row_h - 2, Color(40, 46, 58));
+          drawn++;
         }
         draw_nav_hint();
         draw_udp_badge();
