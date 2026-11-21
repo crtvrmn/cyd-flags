@@ -301,9 +301,9 @@ rotates it at runtime. There are seven screen types:
    **green** when that sector was faster than your best lap's sector and
    **red** when it was slower. A sector that has not been completed yet shows
    `--.---` on a neutral background.
-3. **Rev limiter** — large gear with only the speed number underneath (no unit
-   label), no bar or RPM text. The page polls at 33 Hz (30 ms) and only the changed gear/speed rectangles
-   are transferred; the plugin builds it at 50 Hz. The tower/logic pages use
+3. **Rev limiter** — one very large gear, deliberately nothing else (no speed
+   line, no bar, no RPM text). The page polls at 33 Hz (30 ms) and only the
+   changed gear rectangle is transferred; the plugin builds it at 50 Hz. The tower/logic pages use
    80 ms, the clock/flag pages 300 ms. Available in races
    and in practice/qualifying.
 4. **SABT** — reads the SimHub properties of the Simple Active Belt Tensioner
@@ -325,8 +325,9 @@ next; both wrap and skip disabled pages. The cycle is
 **tower → race logic → rev limiter → SABT → clock**. By default all pages also work
 outside a race; with the race-pages option checked, practice/qualifying show
 only rev limiter and clock. The **top-left quadrant on the idle clock** opens the alarm
-setup; during setup the four quadrants are +1 h / +5 min / off / save. During
-the alarm overlay any tap stops it.
+setup; during setup the four quadrants are +1 h / +5 min / off / save. Tapping
+**off** clears the alarm and pre-fills the next 5-minute slot (14:07 → 14:10).
+During the alarm overlay any tap stops it.
 An active flag still has priority over all pages. The touch controller
 (XPT2046) is polled on its own SPI pins; the targets are large quadrants, so no
 precise calibration is needed. The X axis is mirror-inverted on the CYD, which

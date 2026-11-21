@@ -13,7 +13,7 @@ Am Ende zeigt dein „Cheap Yellow Display“ (CYD):
   als deine Bestzeit, rot = langsamer).
 - außerhalb des Rennens (Menü, Training, Qualifying): **die echte Uhrzeit**,
 - wenn eine Flagge kommt: die Flagge groß auf dem ganzen Bildschirm,
-- eine **Rev-Limiter-Seite** mit großem Gang und darunter klein der km/h-Zahl, ohne Leiste, sehr schnell
+- eine **Rev-Limiter-Seite** mit einem sehr großen Gang, ohne Leiste, sehr schnell
 - eine **SABT-Seite** mit Status und den drei Zugwerten (IDLE, MIN, MAX) des Simple Active Belt Tensioner
   aktualisiert (auch im Training/Qualifying),
 - **Tippen** auf die unteren Ecken: unten rechts = nächste Seite, unten links =
@@ -286,9 +286,9 @@ relativen Fahrer zu allen aktivierten Displays.
   dort nur Rev-Limiter und Uhr. Eine Flagge hat immer Vorrang.
   Die Racelogic-Seite zeigt das Delta zur persönlichen Bestzeit und die drei
   Sektoren (grün = schneller, rot = langsamer als deine Bestzeit; noch nicht
-  gefahrene Sektoren bleiben neutral). Der Rev-Limiter zeigt nur den Gang und darunter klein die km/h-Zahl, die SABT-Seite Status und Zugwerte. Die Uhrzeit
+  gefahrene Sektoren bleiben neutral). Der Rev-Limiter zeigt nur den Gang, die SABT-Seite Status und Zugwerte. Die Uhrzeit
   oben links ist im Rennen klein; außerhalb groß mit Datum. Oben links auf der
-  Uhr öffnest du den **Alarm**: vier Ecken = Stunde +1, Minute +5, aus, speichern.
+  Uhr öffnest du den **Alarm**: vier Ecken = Stunde +1, Minute +5, aus, speichern. Beim Ausschalten (unten links) wird die nächste 5-Minuten-Zeit aus der aktuellen Uhrzeit vorbelegt (14:07 → 14:10).
 
 > **Startampel:** SimHub stellt keine Startlichter/Countdown-Daten bereit, daher
 > kann die Anzeige keine echte Ampel zeigen. Die **PIT**-Anzeige ist nur ein

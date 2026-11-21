@@ -41,11 +41,11 @@ namespace CydFlags
             // Some games fill StatusDataBase but not the player opponent's
             // sector array. At least the first two current sectors are exposed
             // there, so use them as a fallback instead of showing nothing.
-            if (s1 <= 0 && s2 <= 0 && s3 <= 0)
-            {
-                s1 = Seconds(data.Sector1Time);
-                s2 = Seconds(data.Sector2Time);
-            }
+            if (s1 <= 0) s1 = Seconds(data.Sector1Time);
+            if (s2 <= 0) s2 = Seconds(data.Sector2Time);
+            // Newer SimHub builds expose Sector3Time; the SDK this plugin is
+            // built against does not, so read it via reflection.
+            if (s3 <= 0) s3 = PropertySeconds(data, "Sector3Time");
 
             double b1 = SectorSeconds(best, 0);
             double b2 = SectorSeconds(best, 1);
@@ -79,6 +79,20 @@ namespace CydFlags
                 FormatSector(s3),
                 SectorColor(s3, b3)
             });
+        }
+
+        private static double PropertySeconds(object target, string propertyName)
+        {
+            try
+            {
+                PropertyInfo property = target.GetType().GetProperty(
+                    propertyName, BindingFlags.Public | BindingFlags.Instance);
+                return property == null ? 0 : Seconds(property.GetValue(target, null));
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
         }
 
         private static bool TryDelta(Opponent player, StatusDataBase data, double lap,

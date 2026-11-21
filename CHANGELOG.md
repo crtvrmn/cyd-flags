@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.3
+
+* **Sector 3 and centered sector labels.** `Sector3Time` is used as the
+  per-sector fallback, and the S1/S2/S3 values are now vertically centered in
+  their colored cards instead of sticking to the top edge.
+* **Rev page is only the gear.** The extra speed line was removed completely,
+  so a slow display can never let the speed text run into the gear.
+* **Alarm clear rounds up.** Switching the alarm off pre-fills the next
+  5-minute slot from the current wall clock (14:07 -> 14:10).
+
 ## 0.8.2
 
 * **Cleaner rev page.** The large gear now has only the speed number underneath;

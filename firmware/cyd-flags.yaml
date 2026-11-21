@@ -30,7 +30,7 @@ substitutions:
   # On boards without a speaker this is simply silent.
   alarm_sound_pin: GPIO26
   # Shown on the boot splash; update together with the plugin version.
-  firmware_version: "0.8.2"
+  firmware_version: "0.8.3"
 
 esphome:
   name: ${device_name}
@@ -471,34 +471,22 @@ display:
       };
 
       if (rev_page) {
-        const bool has_speed = rev_count > 1 && rev_f[1] != "-";
-        // Big gear, then only the speed number underneath - no unit label.
-        const int gear_y = portrait ? 138 : 102;
-        const int speed_y = portrait ? 242 : 190;
-        const std::string speed_line = has_speed ? rev_f[1] : "--";
+        // Only the gear, deliberately nothing else: the CYD cannot keep up
+        // with a second fast-changing line, and the gear is the useful data.
+        const int gear_y = portrait ? 160 : 108;
 
-        // Only gear and speed: no RPM bar, no extra labels. A full repaint is
-        // needed on page entry or when the boot IP hint appears; otherwise the
-        // dirty rectangles keep the per-frame SPI transfer tiny.
+        // A full repaint is needed on page entry or when the boot IP hint
+        // appears; otherwise only the gear rectangle is touched.
         if (rev_full) {
           it.print(W / 2, gear_y, id(font_gear), fg, TextAlign::CENTER, rev_f[0].c_str());
-          it.print(W / 2, speed_y, id(font_speed), Color(210, 215, 225),
-                   TextAlign::CENTER, speed_line.c_str());
           if (show_ip) {
             it.print(6, H - 12, id(font_small), Color(150, 150, 160), TextAlign::CENTER_LEFT,
                      id(ip_address).state.c_str());
           }
           draw_nav_hint();
-        } else {
-          if (rev_f[0] != id(rev_last_gear)) {
-            it.filled_rectangle(0, gear_y - 66, W, 132, bg);
-            it.print(W / 2, gear_y, id(font_gear), fg, TextAlign::CENTER, rev_f[0].c_str());
-          }
-          if (speed_line != id(rev_last_speed)) {
-            it.filled_rectangle(0, speed_y - 22, W, 44, bg);
-            it.print(W / 2, speed_y, id(font_speed), Color(210, 215, 225),
-                     TextAlign::CENTER, speed_line.c_str());
-          }
+        } else if (rev_f[0] != id(rev_last_gear)) {
+          it.filled_rectangle(0, gear_y - 76, W, 152, bg);
+          it.print(W / 2, gear_y, id(font_gear), fg, TextAlign::CENTER, rev_f[0].c_str());
         }
         // The driver returns early when a band has no dirty pixel. Touch one
         // harmless pixel in each band so a gear/speed change in a lower band
@@ -512,7 +500,6 @@ display:
           id(rev_band) = 0;
           id(rev_painted) = true;
           id(rev_last_gear) = rev_f[0];
-          id(rev_last_speed) = speed_line;
           id(rev_last_ip) = show_ip;
         }
         draw_udp_badge();
@@ -559,8 +546,9 @@ display:
             else if (f[5 + i * 2] == "R") card = Color(190, 25, 30);
           }
           it.filled_rectangle(8, y, W - 16, sector_h - 4, card);
-          it.print(18, y + 8, id(font_sub), Color(245, 245, 245), TextAlign::CENTER_LEFT, sector_labels[i]);
-          it.print(W - 18, y + 8, id(font_sub), Color(245, 245, 245), TextAlign::CENTER_RIGHT,
+          const int text_y = y + (sector_h - 4) / 2;
+          it.print(18, text_y, id(font_sub), Color(245, 245, 245), TextAlign::CENTER_LEFT, sector_labels[i]);
+          it.print(W - 18, text_y, id(font_sub), Color(245, 245, 245), TextAlign::CENTER_RIGHT,
                    count > 4 + i * 2 ? f[4 + i * 2].c_str() : "--.---");
         }
         draw_nav_hint();
@@ -798,6 +786,15 @@ touchscreen:
               else id(alarm_minute) = (id(alarm_minute) + 5) % 60;
             } else {
               if (x < W / 2) {
+                // Clearing the timer pre-fills the next 5-minute slot, based
+                // on the current wall clock (14:07 -> 14:10).
+                auto now = id(wall_clock).now();
+                if (now.is_valid()) {
+                  int total = now.hour * 60 + now.minute;
+                  int rounded = ((total + 4) / 5) * 5;
+                  id(alarm_hour) = (rounded / 60) % 24;
+                  id(alarm_minute) = rounded % 60;
+                }
                 id(alarm_enabled) = false;
               } else {
                 id(alarm_enabled) = true;
@@ -884,12 +881,8 @@ font:
     glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;!?()[]&+/-_'~"
   - file: "fonts/DejaVuSansCondensed-Bold.ttf"
     id: font_gear
-    size: 132
+    size: 150
     glyphs: "0123456789RN-+"
-  - file: "fonts/DejaVuSansCondensed-Bold.ttf"
-    id: font_speed
-    size: 34
-    glyphs: "0123456789-"
   - file: "fonts/DejaVuSansCondensed-Bold.ttf"
     id: font_small
     size: 13
@@ -992,10 +985,6 @@ globals:
     restore_value: false
     initial_value: "0"
   - id: rev_last_gear
-    type: std::string
-    restore_value: false
-    initial_value: '""'
-  - id: rev_last_speed
     type: std::string
     restore_value: false
     initial_value: '""'
