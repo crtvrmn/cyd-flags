@@ -30,7 +30,7 @@ substitutions:
   # On boards without a speaker this is simply silent.
   alarm_sound_pin: GPIO26
   # Shown on the boot splash; update together with the plugin version.
-  firmware_version: "0.8.5"
+  firmware_version: "0.8.6"
 
 esphome:
   name: ${device_name}
@@ -727,8 +727,9 @@ display:
       it.print(W / 2, hero_y, hero_font, hero_color, TextAlign::CENTER, title.c_str());
       it.print(W / 2, sub_y, id(font_sub), sub_color, TextAlign::CENTER, sub.c_str());
 
-      // Idle clock screen: small alarm shortcut top-left.
-      if (!race_session && !flag_active && id(feat_clock)) {
+      // Clock page: small alarm shortcut top-left. Practice/qualifying also
+      // have a clock page, so this is not restricted to a race session.
+      if (!flag_active && id(feat_clock) && clock_page) {
         const bool armed = id(alarm_enabled);
         const Color alarm_color = armed ? Color(255, 120, 90) : Color(150, 155, 165);
         const int ax = 18, ay = 18;
@@ -813,12 +814,22 @@ touchscreen:
             return;
           }
 
-          // Idle clock screen: top-left opens the alarm setup.
+          // The top-left alarm hotspot is live only while the clock page is
+          // actually visible. Practice/qualifying can show the tower or the
+          // clock; do not block the timer just because race data exists.
           const bool touch_link = id(link_seen) && (millis() - id(link_last_ms) < 5000);
           const bool touch_flag = id(feat_flags) && touch_link && id(flag_state) != "NONE";
-          const bool touch_race = id(race_mode) && touch_link && !touch_flag
-                                  && (!id(timing_raw).empty() || !id(logic_raw).empty());
-          if (!touch_race && !touch_flag && id(feat_clock)
+          const bool visible_tower = touch_link && id(race_mode) && id(feat_tower)
+                                     && !id(timing_raw).empty() && id(race_view) == 0;
+          const bool visible_logic = touch_link && id(race_mode) && id(feat_logic)
+                                     && !id(logic_raw).empty() && id(race_view) == 1;
+          const bool visible_rev = touch_link && id(feat_rev)
+                                   && !id(rev_raw).empty() && id(race_view) == 3;
+          const bool visible_sabt = touch_link && id(feat_sabt)
+                                    && id(race_view) == 4;
+          const bool race_page_visible = visible_tower || visible_logic
+                                         || visible_rev || visible_sabt;
+          if (!race_page_visible && !touch_flag && id(feat_clock)
               && x < W / 2 && y < H / 2) {
             id(alarm_edit) = true;
             return;

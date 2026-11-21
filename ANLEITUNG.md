@@ -217,10 +217,11 @@ Display kann nicht gelöscht werden.
 Bei einem Update von Version 0.6.0 werden die alten Einzel-Display-Einstellungen
 automatisch als **Display 1** übernommen – du musst nichts neu eintragen.
 
-Optional: Unter **Backlight** kannst du **„Turn backlight off (0%) while no
-game is running“** aktivieren. Dann wird das Display dunkel, sobald kein Spiel
-läuft, und beim Spielstart wieder auf den eingestellten Wert gedreht. Das gilt
-pro Display. Aktiviere es erst, wenn die Verbindung steht – im dunklen Zustand
+Optional: Unter **Backlight** kannst du **„Turn backlight off (0%) while the
+PC has no game running“** aktivieren. Dann wird das Display nur dunkel, wenn
+der PC überhaupt kein Spiel laufen hat (Windows-Idle). Ein Spiel im Menü oder
+im Training zählt als laufend, das Display bleibt also hell und zeigt die Uhr.
+Beim Spielstart wird der eingestellte Wert wieder gesetzt. Das gilt pro Display. Aktiviere es erst, wenn die Verbindung steht – im dunklen Zustand
 zeigt das Display seine IP nicht an.
 
 Wenn **offline** steht:

@@ -264,11 +264,13 @@ The panel's backlight can be controlled per display from the same settings page:
 
 - **Set display brightness from SimHub** pushes the slider value when the
   settings are applied.
-- **Turn backlight off (0%) while no game is running** is optional. When
-  enabled, the plugin sends `0%` as soon as SimHub reports that no game process
-  is running, and restores the slider value when a game starts. While the panel
-  is off it cannot show its IP address, so finish the network setup first and
-  only then enable this option.
+- **Turn backlight off (0%) while the PC has no game running** is optional.
+  When enabled, the plugin sends `0%` only while SimHub detects **no game
+  process at all** (PC idle). A game that is still in its menus or in
+  practice/qualifying counts as running, so the display stays on and you can
+  see the clock. The slider value is restored as soon as a game process is
+  detected. While the panel is off it cannot show its IP address, so finish the
+  network setup first and only then enable this option.
 - **Push brightness now** forces one immediate push to the selected display.
 
 The `brightness` entity is a normal ESPHome number: `0` turns the backlight
@@ -302,7 +304,8 @@ rotates it at runtime. There are seven screen types:
    stay readable. Each sector card is
    **green** when that sector was faster than your best lap's sector and
    **red** when it was slower. A sector that has not been completed yet shows
-   `--.---` on a neutral background.
+   `--.---` on a neutral background. If the game exposes no live S3, the last
+   completed S3 is shown until the live value arrives.
 3. **Rev limiter** — one very large gear, deliberately nothing else (no speed
    line, no bar, no RPM text). The page polls at 33 Hz (30 ms) and only the
    changed gear rectangle is transferred; the plugin builds it at 50 Hz. The tower/logic pages use
@@ -327,7 +330,9 @@ next; both wrap and skip disabled pages. The cycle is
 **tower → race logic → rev limiter → SABT → clock**. By default all pages also work
 outside a race; with the race-pages option checked, practice/qualifying show
 only rev limiter and clock. The **top-left quadrant on the idle clock** opens the alarm
-setup; during setup the four quadrants are +1 h / +5 min / off / save. Tapping
+setup; during setup the four quadrants are +1 h / +5 min / off / save. The
+clock page is also reachable in practice/qualifying, so the alarm can be set
+there too once you have navigated to the clock. Tapping
 **off** clears the alarm and pre-fills the next 5-minute slot (14:07 → 14:10).
 During the alarm overlay any tap stops it.
 An active flag still has priority over all pages. The touch controller
@@ -523,7 +528,7 @@ connection backoff, so a timeout on one panel does not delay the others.
 | Plugin status says **404** | Entity name mismatch. Only rename entities if you also change `DeviceClient.cs`; the default names are `flag`, `game`, `race`, `timing`, `logic`, `lap_label`, `features`, `wifi_ssid`, `wifi_password`, `wifi_connect`, `sabt`, `heartbeat`, `brightness`. |
 | **Page list / WiFi save does nothing** | The display is running an older firmware before 0.6.0. Flash the current factory/OTA image; the plugin then finds the `features` and `wifi_*` entities. |
 | **WiFi is gone after an update** | A **factory** USB flash erases NVS. Use the `.ota.bin` for wireless updates, or enter the credentials again with **Save WiFi on display**. |
-| Race-logic sectors stay `--.---` | The game does not expose current sector times for the player. The page still shows lap and delta; sectors fill in as the game reports them. |
+| Race-logic sectors stay `--.---` | The game does not expose current sector times for the player. The page still shows lap and delta; S3 falls back to the last completed S3 until a live value arrives. |
 | Display stays **blank** | Wrong `display_model` for your board, or backlight not on. Check the USB cable is data-capable and the board variant table above. |
 | Image **upside down** | `display_rotation: "270"`. |
 | **Red/blue swapped** | `color_order: RGB` (or `BGR`) in the display block. |

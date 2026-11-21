@@ -24,7 +24,7 @@ namespace CydFlags
     [PluginName("CYD Flags")]
     public class CydFlagsPlugin : IPlugin, IDataPlugin, IWPFSettingsV2
     {
-        public const string Version = "0.8.5";
+        public const string Version = "0.8.6";
 
         public CydFlagsSettings Settings;
 
@@ -288,7 +288,11 @@ namespace CydFlags
 
                 if (!data.GameRunning || data.NewData == null)
                 {
-                    SetGameRunning(false);
+                    // In a game menu SimHub reports GameRunning=false although
+                    // the game process is alive. Keep the panel awake then so
+                    // the clock is visible; only dim when the PC really has no
+                    // game process running.
+                    SetGameRunning(data.RunningGameProcessDetected);
                     SetRev(string.Empty);
                     SetDelta(string.Empty);
                     _deltaTracker.Reset();

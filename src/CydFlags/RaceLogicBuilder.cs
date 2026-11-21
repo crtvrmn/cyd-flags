@@ -53,6 +53,12 @@ namespace CydFlags
             // false (S2 is still running, so lap == S1 + S2).
             if (s3 <= 0 && s1 > 0.5 && s2 > 0.5 && lap > s1 + s2 + 0.05)
                 s3 = lap - s1 - s2;
+            // Some RaceRoom builds never expose a live S3 at all. A blank
+            // card was worse than showing the last completed S3; once SimHub
+            // supplies the live value the code above takes priority.
+            if (s3 <= 0) s3 = Seconds(data.Sector3LastLapTime);
+            if (s3 <= 0 && player != null)
+                s3 = SectorSeconds(player.LastLapSectorTimes, 2);
 
             double b1 = SectorSeconds(best, 0);
             double b2 = SectorSeconds(best, 1);

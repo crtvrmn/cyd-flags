@@ -426,16 +426,17 @@ namespace CydFlags.UI
             AddSection(root, "Backlight on this display");
             _applyBrightness = AddCheck(root, "Set display brightness from SimHub",
                 () => device.ApplyBrightness, v => device.ApplyBrightness = v);
-            _dimWhenNoGame = AddCheck(root, "Turn backlight off (0%) while no game is running",
+            _dimWhenNoGame = AddCheck(root, "Turn backlight off (0%) while the PC has no game running",
                 () => device.DimWhenNoGame, v => device.DimWhenNoGame = v);
             _brightness = AddSlider(root, "Brightness while a game is running", 5, 100, 1,
                 () => device.Brightness, v => device.Brightness = (int)Math.Round(v), "0");
 
             root.Children.Add(new TextBlock
             {
-                Text = "With the no-game option enabled the backlight is set to 0% as soon as SimHub reports " +
-                       "no running game, and this slider value is restored when a game starts. Useful when the " +
-                       "display should disappear while you are only using Windows.",
+                Text = "With this option enabled the backlight is set to 0% only when SimHub detects no game " +
+                       "process at all (PC idle). A game that is still in its menus or in practice counts as " +
+                       "running and keeps the display on so you can see the clock. The slider value is restored " +
+                       "when the game starts.",
                 TextWrapping = TextWrapping.Wrap,
                 MaxWidth = 620,
                 FontSize = 11,

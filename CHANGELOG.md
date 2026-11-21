@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.6
+
+* **Practice/qualifying alarm.** The top-left timer hotspot now works whenever
+  the clock page is visible, not only outside a race session. The alarm icon is
+  drawn on the clock page in practice too.
+* **No dimming in game menus.** Idle dimming now uses SimHub's
+  `RunningGameProcessDetected` instead of `GameRunning`, so a game that is
+  still in its menu or in practice keeps the display awake with the clock.
+  0% is used only when the PC has no game process at all.
+* **Sector 3 fallback.** If the game exposes neither live S3 nor a running lap
+  time, the last completed S3 is shown instead of a blank card.
+
 ## 0.8.5
 
 * **Sector 3 on current laps.** SimHub has no live `Sector3Time` property on
