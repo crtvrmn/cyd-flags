@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.5
+
+* **Sector 3 on current laps.** SimHub has no live `Sector3Time` property on
+  most versions; while S3 is running it is now derived from the running lap
+  time minus the completed S1/S2 (with the reflection fallback kept for newer
+  builds).
+* **No `N` sliver above the gear.** A gear change now forces a full repaint;
+  the previous glyph's tall stem could survive the partial clear rectangle.
+
 ## 0.8.4
 
 * **Readable +/− trend symbols.** The white symbol is now centered in each

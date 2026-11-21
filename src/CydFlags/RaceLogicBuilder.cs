@@ -46,6 +46,13 @@ namespace CydFlags
             // Newer SimHub builds expose Sector3Time; the SDK this plugin is
             // built against does not, so read it via reflection.
             if (s3 <= 0) s3 = PropertySeconds(data, "Sector3Time");
+            // SimHub does not expose a live S3 value in most versions: the
+            // current-lap sector array only contains completed sectors. While
+            // S3 is running, the lap time is larger than S1 + S2, and the
+            // remainder is exactly the live S3. In S1/S2 the condition is
+            // false (S2 is still running, so lap == S1 + S2).
+            if (s3 <= 0 && s1 > 0.5 && s2 > 0.5 && lap > s1 + s2 + 0.05)
+                s3 = lap - s1 - s2;
 
             double b1 = SectorSeconds(best, 0);
             double b2 = SectorSeconds(best, 1);

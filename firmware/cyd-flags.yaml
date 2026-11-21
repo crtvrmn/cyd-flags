@@ -30,7 +30,7 @@ substitutions:
   # On boards without a speaker this is simply silent.
   alarm_sound_pin: GPIO26
   # Shown on the boot splash; update together with the plugin version.
-  firmware_version: "0.8.4"
+  firmware_version: "0.8.5"
 
 esphome:
   name: ${device_name}
@@ -326,8 +326,12 @@ display:
       const bool show_ip = millis() < id(ip_until) && !id(ip_address).state.empty();
       // The rev page redraws only what changed. A page entry or the IP hint
       // appearing still needs one full repaint.
+      // A gear change also needs a full repaint: the previous glyph may be
+      // taller than the partial clear rectangle (e.g. the left stem of "N"
+      // remained above the new number).
+      const bool rev_gear_changed = rev_page && rev_count > 0 && rev_f[0] != id(rev_last_gear);
       const bool rev_full = rev_page
-                            && (!id(rev_painted) || show_ip != id(rev_last_ip));
+                            && (!id(rev_painted) || show_ip != id(rev_last_ip) || rev_gear_changed);
       if (!rev_page || rev_full) {
         it.fill(bg);
       }
@@ -484,9 +488,6 @@ display:
                      id(ip_address).state.c_str());
           }
           draw_nav_hint();
-        } else if (rev_f[0] != id(rev_last_gear)) {
-          it.filled_rectangle(0, gear_y - 76, W, 152, bg);
-          it.print(W / 2, gear_y, id(font_gear), fg, TextAlign::CENTER, rev_f[0].c_str());
         }
         // The driver returns early when a band has no dirty pixel. Touch one
         // harmless pixel in each band so a gear/speed change in a lower band
